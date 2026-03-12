@@ -1,0 +1,108 @@
+C251 COMPILER V5.60.0,  spi                                                                12/03/26  19:53:11  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE spi
+OBJECT MODULE PLACED IN .\Objects\spi.obj
+COMPILER INVOKED BY: D:\Keil MDK\C251\BIN\C251.EXE spi.c XSMALL INTR2 BROWSE DEBUG PRINT(.\Listings\spi.lst) OBJECT(.\Ob
+                    -jects\spi.obj) 
+
+stmt  level    source
+
+    1          #include "spi.h"
+*** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
+*** WARNING C323 IN LINE 16 OF spi.h: newline expected, extra characters found
+    2          
+    3          
+    4          
+    5          
+    6          
+    7          //========================================================================
+    8          
+    9          
+   10          // 函数名称: SPI_Init
+   11          
+   12          
+   13          // 函数功能: SPI初始化
+   14          
+   15          
+   16          // 入口参数: 无
+   17          
+   18          
+   19          // 函数返回: 无
+   20          
+   21          
+   22          // 当前版本: VER1.0
+   23          
+   24          
+   25          // 修改日期: 2023 - 6 - 7
+   26          
+   27          
+   28          // 当前作者: ZCF
+   29          
+   30          
+   31          // 其他备注: 这里SPI的引脚选择要通过P_SW1寄存器切换
+   32          
+   33          
+   34          //========================================================================
+   35          
+   36          
+   37          void SPI_Init(void)
+   38          {
+   39   1              P_SW1 = (P_SW1 & ~0x0c) | 0x04;         //SPI: SS(P2.2), MOSI(P2.3), MISO(P2.4), SCLK(P2.5)
+   40   1          SSIG = 1;                           //忽略 SS 引脚功能，使用 MSTR 确定器件是主机还是从机
+   41   1          SPEN = 1;                           //使能 SPI 功能
+   42   1          DORD = 0;                           //先发送/接收数据的高位（MSB）
+   43   1          MSTR = 1;                           //设置主机模式
+   44   1          CPOL = 0;                           //SCLK 空闲时为低电平，SCLK 的前时钟沿为上升沿，后时钟沿为下降沿
+   45   1          CPHA = 0;                           //数据 SS 管脚为低电平驱动第一位数据并在 SCLK 的后时钟沿改变数据
+   46   1          SPCTL = (SPCTL & ~3) | 3;           //SPI 时钟频率选择, 0: 4T, 1: 8T,  2: 16T,  3: 2T
+   47   1          SPI_SCK = 0;                        //初始化 SPI 信号线
+   48   1          SPI_MOSI = 1;                       //初始化 SPI 信号线
+   49   1          SPIF = 1;                           //清SPIF标志
+   50   1          WCOL = 1;                           //清WCOL标志
+   51   1      }
+   52          
+   53          
+   54          
+   55          
+   56          
+C251 COMPILER V5.60.0,  spi                                                                12/03/26  19:53:11  PAGE 2   
+
+   57          
+   58          
+   59          void SPI_WriteByte(unsigned char out)
+   60          {
+   61   1          SPDAT = out;
+   62   1          while(SPIF == 0);
+   63   1          SPIF = 1;                           //清SPIF标志
+   64   1          WCOL = 1;                           //清WCOL标志
+   65   1      }
+   66          
+   67          
+   68          
+   69          
+   70          
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =        62     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =    ------     ------
+  bit size             =    ------     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =    ------     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
