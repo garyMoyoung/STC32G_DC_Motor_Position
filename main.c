@@ -1,5 +1,7 @@
 #include <STC32G.H>
 #include <intrins.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include "pic.h"
 #include "spi.h"
 #include "oled.h"
@@ -21,7 +23,15 @@
 #define PWM_ARR         (FOSC / PWM_FREQ)                   // = 1658
 #define PWM_DEAD_TIME   60      // 死区时间约 60/33.1776M ≈ 1.8us
 
+#define T0_RELOAD   (65536 - FOSC / 1000)      // = 32359
 
+unsigned int  g_enc_cnt; 
+bit           B_Change;         // 计数变化标志
+volatile bit disp_flag = 0;        // OLED刷新标志
+volatile unsigned int ms_tick = 0;     // 系统毫秒计数器
+volatile unsigned int test_pwmb = 0;
+
+sbit     TOG  = P0^4;        // 测试用GPIO，PWM占空比改变时翻转
 void CLK_Init(void)
 {
     P_SW2 |= 0x80;              // 使能扩展XFR寄存器访问
@@ -78,43 +88,45 @@ void UART1_Init(void)
     EA = 1;
 }
 
+
+
 void UART2_Init(void)
 {
-    // ����P1.0ΪRXD2���룬P1.1ΪTXD2�������
-    P1M0 |=  0x02;              // P1.1 �������
-    P1M1 &= ~0x02;
-    P1M0 &= ~0x01;              // P1.0 ׼˫�����룩
-    P1M1 &= ~0x01;
+    // 配置 P4.6 为 RXD2（输入），P4.7 为 TXD2（推挽输出）
+    P4M0 |=  0x80;              // P4.7 推挽输出
+    P4M1 &= ~0x80;
+    P4M0 &= ~0x40;              // P4.6 准双向（输入）
+    P4M1 &= ~0x40;
 
-    // P1.2��RS485����������ţ��������
+    // P1.2 RS485 方向控制脚，推挽输出
     P1M0 |=  0x04;
     P1M1 &= ~0x04;
-    RS485_DIR = RS485_RX;       // Ĭ�Ͻ���ģʽ
+    RS485_DIR = RS485_RX;       // 默认接收模式
 
-    // ����2���ƼĴ�����S2CON��
-    // S2SM0=0, S2SM1=1��8λUARTģʽ
-    // S2REN=1����������
+    // 串口2控制寄存器（S2CON）
+    // S2SM0=0, S2SM1=1：8位UART模式
+    // S2REN=1：允许接收
     S2CON = 0x50;
 
-    // ʹ����չSFR���ʣ����ö�ʱ��2
+    // 使能扩展SFR访问，配置定时器2
     P_SW2 |= 0x80;
 
-    // ��ʱ��2��16λ�Զ����أ�1Tģʽ��AUXR.2=1��
-    AUXR |= 0x04;               // T2_CT=0��ʱ����T2R=1����T2��T2x12=1��1T
-    // ע�⣺AUXR bit2=T2x12(1T), bit4=T2R(����), ��ֿ�����
-    // �ֲ᣺AUXR |= 0x14 ��ͬʱ����T2x12��T2R
-    AUXR |= 0x14;               // T2x12=1(1Tģʽ), T2R=1(����T2)
+    // 定时器2，16位自动重装，1T模式（AUXR.2=1）
+    AUXR |= 0x04;
+    AUXR |= 0x14;               // T2x12=1(1T模式), T2R=1(启动T2)
 
-    // ����T2����ֵ��T2L/T2H����չSFR����
+    // 配置T2重载值（T2L/T2H 属扩展SFR）
     T2L = UART2_RELOAD & 0xFF;
     T2H = UART2_RELOAD >> 8;
 
-    // ����2ʱ��Դѡ��Ĭ��ʹ��T2������������ã�
+    // 串口2引脚切换：RxD2→P4.6, TxD2→P4.7
+    // 使用位操作，避免误清 EAXFR 等其他位
+    S2_S = 1;
 
     P_SW2 &= ~0x80;
 
-    // ʹ�ܴ���2�ж�
-    IE2 |= 0x01;                // ES2=1��ʹ�ܴ���2�ж�
+    // 使能串口2中断
+    IE2 |= 0x01;                // ES2=1
     EA = 1;
 }
 
@@ -122,14 +134,14 @@ void PWM_Init(void)
 {
     P_SW2 |= 0x80;              // 使能扩展SFR
 
-    // P2.0 PWM1P，P2.1 PWM1N 推挽输出
-    P2M0 |=  0x03;
-    P2M1 &= ~0x03;
+    // P1.0 PWM1P，P1.1 PWM1N 推挽输出        ← 改 P2→P1
+    P1M0 |=  0x03;
+    P1M1 &= ~0x03;
 
-    // 引脚切换：PWMA CH1 映射到 P2.0(PWM1P) / P2.1(PWM1N)
-    // C1PS[1:0]=01 → P2.0(PWM1P)，C1NPS[3:2]=01 → P2.1(PWM1N)
+    // 引脚切换：PWMA CH1 默认 P1.0(PWM1P) / P1.1(PWM1N)
+    // C1PS[1:0]=00 → 默认引脚，直接清零低4位    ← 改为 0x00
     PWMA_PS &= ~0x0F;
-    PWMA_PS |=  0x05;
+    // PWMA_PS |= 0x00;  // 默认值，无需赋值
 
     // ---- PWMA 主控寄存器 ----
 
@@ -202,55 +214,8 @@ void PWM_Init(void)
     P_SW2 &= ~0x80;
 }
 
-void Encoder_Init(void)
-{
-    P_SW2 |= 0x80;              // 使能扩展SFR访问
 
-    // P1.4, P1.5 设为高阻输入（编码器信号输入）
-    P1M0 &= ~0x30;              // bit4,5清0
-    P1M1 |=  0x30;              // bit4,5置1 → 高阻输入模式
 
-    // 功能脚切换：PWMB CH1/CH2 切换到 P1.4/P1.5
-    // PWM2_PS[5:4] = C2PS[1:0] = 01
-    PWMB_PS &= ~0x30;    // 清 C2PS[1:0]（bit5:4）
-    PWMB_PS |=  0x10;    // 置01 → P1.4/P1.5
-
-    // ---- PWMB 编码器模式配置 ----
-
-    // SMCR：从模式控制寄存器
-    // SMS[2:0]=011：编码器模式3（TI1和TI2边沿都计数，4倍频）
-    PWMB_SMCR = 0x03;
-
-    // CCMR1：通道1（A相）
-    // CC1S=01：配置为输入，映射到TI1
-    // IC1F=0000：不滤波
-    PWMB_CCMR1 = 0x01;
-
-    // CCMR2：通道2（B相）
-    // CC2S=01：配置为输入，映射到TI2
-    // IC2F=0000：不滤波
-    PWMB_CCMR2 = 0x01;
-
-    // CCER1：极性与使能
-    // CC1P=0：TI1不反相，上升沿有效
-    // CC1E=1：通道1捕获使能
-    // CC2P=0：TI2不反相，上升沿有效
-    // CC2E=1：通道2捕获使能
-    PWMB_CCER1 = 0x11;
-
-    // ARR：最大值，计数器自由溢出（有符号差值处理溢出）
-    PWMB_ARRH  = 0xFF;
-    PWMB_ARRL  = 0xFF;
-
-    // PSC：不分频，每个编码器脉冲计1次
-    PWMB_PSCRH = 0x00;
-    PWMB_PSCRL = 0x00;
-
-    // 启动 PWMB 计数器
-    PWMB_CR1   = 0x01;          // CEN=1
-
-    P_SW2 &= ~0x80;
-}
 
 
 void PWM_SetDuty(unsigned int duty)
@@ -260,6 +225,63 @@ void PWM_SetDuty(unsigned int duty)
     PWMA_CCR1H = duty >> 8;
     PWMA_CCR1L = duty & 0xFF;
     P_SW2 &= ~0x80;
+}
+
+void PWMB_Encoder_Init(void)
+{
+    EAXFR = 1;
+    P_SW2 |= 0x80;
+
+    /* 1. 引脚选择：默认 C5PS=00(P2.0) / C6PS=00(P2.1)，PWMB_PS=0x00 */
+    PWMB_PS = 0x00;
+ 
+    /* 2. 禁止所有通道输出（编码器输入模式，ENO 必须关闭对应位） */
+    PWMB_ENO = 0x00;
+ 
+    /* 3. 预分频 = 0，计数时钟 = FOSC */
+    PWMB_PSCRH = 0x00;
+    PWMB_PSCRL = 0x00;
+ 
+    /* 4. 自动重装载 = 0xFFFF（16位最大范围） */
+    PWMB_ARRH = 0xFF;
+    PWMB_ARRL = 0xFF;
+ 
+    /* 5. 清零计数器 */
+    PWMB_CNTRH = 0x00;
+    PWMB_CNTRL = 0x00;
+ 
+    /* 6. 通道1(PWM5/TI1) 和 通道2(PWM6/TI2) 配置为输入模式
+     *    CC1S[1:0]=01: IC1 映射到 TI1
+     *    IC1F[3:0]=0010: 输入滤波 4 个时钟
+     *    CCMR = IC1F[3:0] | 00 | CC1S[1:0] = 0010_00_01 = 0x21 */
+    PWMB_CCMR1 = 0x21;     // TI1 (A相 P2.0)
+    PWMB_CCMR2 = 0x21;     // TI2 (B相 P2.1)
+ 
+    /* 7. 从模式控制：编码器模式3，TI1+TI2 双边沿计数（4倍频）
+     *    SMS[2:0] = 011 = 0x03 */
+    PWMB_SMCR = 0x03;
+ 
+    /* 8. 捕获/比较使能
+     *    CC1E=1 使能, CC1P=1 反相(下降沿); CC2E=1, CC2P=1
+     *    CCER1 = 0101_0101 = 0x55
+     *    提示：若计数方向反了，将 CC1P 或 CC2P 改为 0 即可翻转方向 */
+    PWMB_CCER1 = 0x55;
+ 
+    /* 9. 中断使能：CC1IE(bit1)=1，通道1捕获中断 */
+    PWMB_IER = 0x02;
+ 
+    /* 10. 启动计数器：ARPE=1(预装载缓冲), CEN=1(使能计数) */
+    PWMB_CR1 = 0x81;
+
+    EA = 1;
+}
+
+unsigned int Encoder_Read(void)
+{
+    unsigned int cnt;
+    cnt  = (unsigned int)PWMB_CNTRH << 8;
+    cnt |= PWMB_CNTRL;
+    return cnt;
 }
 
 void Sys_init(void)
@@ -294,6 +316,39 @@ void UART1_SendStr(unsigned char *str)
     while (*str)
         UART1_SendByte(*str++);
 }
+void Printf(const char *fmt, ...)
+{
+    char buf[100];  // 缓冲区，根据需要调整大小
+    va_list args;
+    int len;
+    
+    va_start(args, fmt);
+    len = vsprintf(buf, fmt, args);
+    va_end(args);
+    
+    UART1_SendStr((unsigned char *)buf);
+}
+void Timer0_Init(void)
+{
+    // 定时器0模式0：16位自动重载
+    // TMOD低4位控制T0：M1M0=00
+    TMOD &= 0xF0;               // 清T0模式位，M1=0 M0=0
+
+    // 1T模式：AUXR.7 = T0x12 = 1
+    AUXR |= 0x80;
+
+    // 设置重载值
+    TH0 = T0_RELOAD >> 8;       // 高字节 = 0x7E
+    TL0 = T0_RELOAD & 0xFF;     // 低字节 = 0x67
+
+    // 清中断标志，使能T0中断
+    TF0 = 0;
+    ET0 = 1;
+    EA  = 1;
+
+    // 启动定时器0
+    TR0 = 1;
+}
 
 void main(void)
 {
@@ -302,16 +357,25 @@ void main(void)
     SPI_Init();
     UART1_Init();
     UART2_Init();
+    Timer0_Init();
     PWM_Init();
+    PWMB_Encoder_Init();
     OLED_Init();
     OLED_BuffClear();
-    OLED_BuffShowString(0,0,"Press any key to",0);
-    OLED_BuffShowString(0,2,"start fucker",0);
-    OLED_BuffShow();
-    PWM_SetDuty(PWM_ARR / 4);   // 50% 占空比
+    PWM_SetDuty(PWM_ARR / 4);
+    OLED_BuffShowString(0, 0, "Encod:", 0);
+    OLED_BuffShowString(0, 2, "Cnt:", 0);
     while (1)
     {
         UART1_SendStr("Hello World!\r\n");
+        Printf("pwmb: %d\r\n", test_pwmb);
+        if (disp_flag)
+        {
+            disp_flag = 0;
+            OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
+            OLED_BuffShowNum(48, 2, ms_tick, 0);
+            OLED_BuffShow();
+        }
     }
 }
 
@@ -331,3 +395,39 @@ void UART1_ISR(void) interrupt 4
         TI = 0;
     }
 }
+
+
+void PWMB_ISR(void) interrupt 27
+{
+    TOG = ~TOG;  // 测试用GPIO翻转，观察PWM占空比变化
+    if (PWMB_SR1 & 0x02)            // CC1IF: 通道1事件
+    {
+        g_enc_cnt  = (unsigned int)PWMB_CNTRH << 8;
+        g_enc_cnt |= PWMB_CNTRL;
+        B_Change = 1;
+    }
+    PWMB_SR1 = 0x00;
+    PWMB_SR2 = 0x00;
+}
+
+
+void Timer0_ISR(void) interrupt 1
+{
+    ms_tick++;                  // 系统时基累加
+
+    // ---- 编码器采样（每10ms读一次）----
+    if (ms_tick % 10 == 0)
+    {
+        ;
+    }
+
+    // ---- OLED刷新（每200ms一次）----
+    if (ms_tick % 20 == 0)
+    {
+        disp_flag = 1;
+    }
+    if(ms_tick >= 10000) ms_tick = 0; // 防止溢出
+    // ---- MODBUS 3.5字符超时检测（9600bps约4ms）----
+    // 在此处递减超时计数器，具体见MODBUS实现
+}
+
