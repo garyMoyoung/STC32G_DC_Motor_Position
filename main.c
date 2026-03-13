@@ -15,9 +15,17 @@
 #define UART2_BAUD      9600
 
 #define UART2_RELOAD    (65536 - FOSC / 4 / UART2_BAUD)    // = 646720%
-#define RS485_DIR       P12     // 方向控制引脚
-#define RS485_TX        1       // 发送模式
-#define RS485_RX        0       // 接收模式
+#define UART2_BUF_SIZE  64
+
+unsigned char uart2_rx_buf[UART2_BUF_SIZE];
+unsigned char uart2_rx_head = 0;
+unsigned char uart2_rx_tail = 0;
+
+unsigned char uart2_tx_buf[UART2_BUF_SIZE];
+unsigned char uart2_tx_head = 0;
+unsigned char uart2_tx_tail = 0;
+bit           uart2_tx_busy = 0;
+
 
 #define PWM_FREQ        20000
 #define PWM_ARR         (FOSC / PWM_FREQ)                   // = 1658
@@ -101,7 +109,6 @@ void UART2_Init(void)
     // P1.2 RS485 方向控制脚，推挽输出
     P1M0 |=  0x04;
     P1M1 &= ~0x04;
-    RS485_DIR = RS485_RX;       // 默认接收模式
 
     // 串口2控制寄存器（S2CON）
     // S2SM0=0, S2SM1=1：8位UART模式
@@ -331,6 +338,45 @@ void UART1_SendStr(unsigned char *str)
     while (*str)
         UART1_SendByte(*str++);
 }
+
+void UART2_SendByte(unsigned char dat)
+{
+    /* 等待缓冲区有空位 */
+    unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
+    while (next == uart2_tx_tail);      // 缓冲区满则等待
+
+    uart2_tx_buf[uart2_tx_head] = dat;
+    uart2_tx_head = next;
+
+    /* 若发送空闲则立即启动 */
+    if (!uart2_tx_busy)
+    {
+        uart2_tx_busy = 1;
+        S2BUF = uart2_tx_buf[uart2_tx_tail];
+        uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+    }
+}
+
+void UART2_SendString(unsigned char *str)
+{
+    while (*str)
+        UART2_SendByte(*str++);
+}
+
+/*------------------------------------------------------------------------------
+ * 读取接收缓冲区（返回0表示缓冲区空）
+ *----------------------------------------------------------------------------*/
+bit UART2_ReadByte(unsigned char *dat)
+{
+    if (uart2_rx_head == uart2_rx_tail)
+        return 0;                       // 缓冲区空
+
+    *dat = uart2_rx_buf[uart2_rx_tail];
+    uart2_rx_tail = (uart2_rx_tail + 1) % UART2_BUF_SIZE;
+    return 1;
+}
+
+
 void Printf(const char *fmt, ...)
 {
     char buf[100];  // 缓冲区，根据需要调整大小
@@ -382,6 +428,7 @@ void main(void)
     OLED_BuffShowString(0, 2, "Cnt:", 0);
     while (1)
     {
+        UART2_SendString("UART2_Hello World!\r\n");
         UART1_SendStr("Hello World!\r\n");
         Printf("cnt: %d\r\n", g_enc_cnt);
         if (disp_flag)
@@ -411,6 +458,38 @@ void UART1_ISR(void) interrupt 4
     }
 }
 
+void UART2_ISR(void) interrupt 8
+{
+	unsigned char next;
+    /* 接收中断 */
+    if (S2CON & 0x01)               // S2RI
+    {
+        S2CON &= ~0x01;             // 清 S2RI
+
+        next = (uart2_rx_head + 1) % UART2_BUF_SIZE;
+        if (next != uart2_rx_tail)  // 缓冲区未满才存入
+        {
+            uart2_rx_buf[uart2_rx_head] = S2BUF;
+            uart2_rx_head = next;
+        }
+    }
+
+    /* 发送中断 */
+    if (S2CON & 0x02)               // S2TI
+    {
+        S2CON &= ~0x02;             // 清 S2TI
+
+        if (uart2_tx_head != uart2_tx_tail)     // 缓冲区还有数据
+        {
+            S2BUF = uart2_tx_buf[uart2_tx_tail];
+            uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+        }
+        else
+        {
+            uart2_tx_busy = 0;      // 缓冲区空，发送完毕
+        }
+    }
+}
 
 // void PWMB_ISR(void) interrupt 27
 // {
