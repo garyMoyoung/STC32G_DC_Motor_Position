@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 1   
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE main
@@ -38,7 +38,7 @@ stmt  level    source
    25          
    26          #define T0_RELOAD   (65536 - FOSC / 1000)      // = 32359
    27          
-   28          unsigned int  g_enc_cnt; 
+   28          int  g_enc_cnt;
    29          bit           B_Change;         // 计数变化标志
    30          volatile bit disp_flag = 0;        // OLED刷新标志
    31          volatile unsigned int ms_tick = 0;     // 系统毫秒计数器
@@ -66,7 +66,7 @@ stmt  level    source
    52   1          // P_SW2 &= ~0x80;
    53   1      }
    54          
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 2   
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 2   
 
    55          void UART1_Init(void)
    56          {
@@ -134,7 +134,7 @@ stmt  level    source
   118   1          // 配置T2重载值（T2L/T2H 属扩展SFR）
   119   1          T2L = UART2_RELOAD & 0xFF;
   120   1          T2H = UART2_RELOAD >> 8;
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 3   
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 3   
 
   121   1      
   122   1          // 串口2引脚切换：RxD2→P4.6, TxD2→P4.7
@@ -202,7 +202,7 @@ stmt  level    source
   184   1          // CC1E=1：通道1正向输出使能（PWM1P）
   185   1          // CC1P=0：正向输出高电平有效
   186   1          // CC1NE=1：通道1互补输出使能（PWM1N）
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 4   
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 4   
 
   187   1          // CC1NP=0：互补输出高电平有效
   188   1          PWMA_CCER1 = 0x05;         // CC1E=1, CC1NE=1
@@ -252,200 +252,233 @@ stmt  level    source
   232   1          EAXFR = 1;
   233   1          P_SW2 |= 0x80;
   234   1      
-  235   1          PWMB_ENO    = 0x0;                      // Disable all ENO
-  236   1          PWMB_PS     = 0x0;                      // 00:PWM at P1
-  237   1          PWMB_PSCRH  = 0x0;                      // Set prescaler = 0x0
-  238   1          PWMB_PSCRL  = 0x0;
-  239   1          
-  240   1          PWMB_ARRH   = 0xFF;                     // ARR高字节 = 0xFF
-  241   1          PWMB_ARRL   = 0xFF;
-  242   1      
-  243   1          PWMB_CNTRH  = 0x00;                     // 计数器高字节 = 0
-  244   1          PWMB_CNTRL  = 0x00;
+  235   1          PWMB_ENO    = 0x00;                     // 禁用所有输出
+  236   1          PWMB_PS     = 0x00;                     // 引脚映射到默认位置 (P2.0/P2.1)
+  237   1          
+  238   1          // 预分频设置
+  239   1          PWMB_PSCRH  = 0x00;
+  240   1          PWMB_PSCRL  = 0x00;
+  241   1          
+  242   1          // 自动重装载值（16位，支持有符号）
+  243   1          PWMB_ARRH   = 0xFF;
+  244   1          PWMB_ARRL   = 0xFF;
   245   1      
-  246   1          PWMB_CCMR1  = 0x21;                     // Set model as Input, Encoder, filter 4 clock
-  247   1          PWMB_CCMR2  = 0x21;                     // Set mode as input, Encode, Filter 4 clock
-  248   1          PWMB_SMCR   = 0x03;                     // Encode Mode 3
-  249   1          
-  250   1          PWMB_CCER1  = 0x55;                     // Input channe    l enable and polarity
-  251   1          PWMB_CCER2  = 0x55;
-  252   1          
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 5   
+  246   1          // 计数器初值
+  247   1          PWMB_CNTRH  = 0x00;
+  248   1          PWMB_CNTRL  = 0x00;
+  249   1      
+  250   1          // ===== 关键：输入捕获模式配置 =====
+  251   1          // CCMR1: IC1F[7:4] = 0011(滤波), CC1S[1:0] = 01(TI1输入)
+  252   1          // = 0011_0001 = 0x31
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 5   
 
-  253   1      //    PWMB_IER    = 0x02;                     // Enable interrupt
+  253   1          PWMB_CCMR1  = 0x31;        // TI1输入，滤波4时钟
   254   1          
-  255   1          PWMB_CR1    |= 0x01;                    // Enable counter
-  256   1      
-  257   1          P_SW2 &= ~0x80;                         // 关闭扩展SFR访问
-  258   1          EAXFR = 0;
-  259   1      }
-  260          
-  261          unsigned int Encoder_Read(void)
-  262          {
-  263   1          unsigned int cnt;
-  264   1          P_SW2 |= 0x80;      // 使能扩展SFR访问
-  265   1          cnt  = (unsigned int)PWMB_CNTRH << 8;
-  266   1          cnt |= PWMB_CNTRL;
-  267   1          P_SW2 &= ~0x80;
-  268   1          return cnt;
-  269   1      }
-  270          
-  271          void Sys_init(void)
-  272          {
-  273   1          EAXFR = 1;
-  274   1          CKCON = 0x00;
-  275   1          WTST = 0x00;
+  255   1          // CCMR2: IC2F[7:4] = 0011(滤波), CC2S[1:0] = 01(TI2输入)  
+  256   1          // = 0011_0001 = 0x31
+  257   1          PWMB_CCMR2  = 0x31;        // TI2输入，滤波4时钟
+  258   1       
+  259   1          // ===== 编码器模式：双边沿计数 =====
+  260   1          // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
+  261   1          PWMB_SMCR   = 0x03;
+  262   1       
+  263   1          // ===== 极性配置 =====
+  264   1          // CC1E=1, CC1P=0, CC2E=1, CC2P=0
+  265   1          // 这样可以正确检测方向
+  266   1          // CCER1 = 0000_0101 = 0x05
+  267   1          // CCER2 = 0000_0101 = 0x05
+  268   1          PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
+  269   1          PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
+  270   1          
+  271   1          // 禁用中断（轮询模式）
+  272   1          PWMB_IER    = 0x00;
+  273   1          
+  274   1          // 启动计数器
+  275   1          PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
   276   1      
-  277   1          P0M1 = 0x00;   P0M0 = 0x00;
-  278   1          P1M1 = 0x00;   P1M0 = 0x00;
-  279   1          P2M1 = 0x00;   P2M0 = 0x00;
-  280   1          P3M1 = 0x00;   P3M0 = 0x00;
-  281   1          P4M1 = 0x00;   P4M0 = 0x00;
-  282   1          P5M1 = 0x00;   P5M0 = 0x00;
-  283   1          P6M1 = 0x00;   P6M0 = 0x00;
-  284   1          P7M1 = 0x00;   P7M0 = 0x00;
+  277   1          P_SW2 &= ~0x80;
+  278   1          EAXFR = 0;
+  279   1      }
+  280          
+  281          int Encoder_Read(void)
+  282          {
+  283   1          int cnt;
+  284   1          unsigned int raw;
   285   1          
-  286   1          P2M0 |= 0x2F;   // P2.0/1/2/3/5 ������� (RST/DC/CS/MOSI/SCLK)
-  287   1          P2M1 &= ~0x2F;
-  288   1      
-  289   1      }
-  290          
-  291          void UART1_SendByte(unsigned char dat)
-  292          {
-  293   1          SBUF = dat;
-  294   1          while (!TI);                // 等待发送完成
-  295   1          TI = 0;
-  296   1      }
-  297          
-  298          void UART1_SendStr(unsigned char *str)
-  299          {
-  300   1          while (*str)
-  301   1              UART1_SendByte(*str++);
-  302   1      }
-  303          void Printf(const char *fmt, ...)
-  304          {
-  305   1          char buf[100];  // 缓冲区，根据需要调整大小
-  306   1          va_list args;
-  307   1          int len;
-  308   1          
-  309   1          va_start(args, fmt);
-  310   1          len = vsprintf(buf, fmt, args);
-  311   1          va_end(args);
-  312   1          
-  313   1          UART1_SendStr((unsigned char *)buf);
-  314   1      }
-  315          void Timer0_Init(void)
-  316          {
-  317   1          // 定时器0模式0：16位自动重载
-  318   1          // TMOD低4位控制T0：M1M0=00
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 6   
+  286   1          P_SW2 |= 0x80;
+  287   1          raw  = (unsigned int)PWMB_CNTRH << 8;
+  288   1          raw |= PWMB_CNTRL;
+  289   1          P_SW2 &= ~0x80;
+  290   1          
+  291   1          // 转换为有符号16位整数
+  292   1          // 如果最高位为1，则为负数
+  293   1          if (raw & 0x8000) {
+  294   2              cnt = -(int)(0x10000 - raw);  // 补码转换
+  295   2          } else {
+  296   2              cnt = (int)raw;
+  297   2          }
+  298   1          
+  299   1          return cnt;
+  300   1      }
+  301          
+  302          void Sys_init(void)
+  303          {
+  304   1          EAXFR = 1;
+  305   1          CKCON = 0x00;
+  306   1          WTST = 0x00;
+  307   1      
+  308   1          P0M1 = 0x00;   P0M0 = 0x00;
+  309   1          P1M1 = 0x00;   P1M0 = 0x00;
+  310   1          P2M1 = 0x00;   P2M0 = 0x00;
+  311   1          P3M1 = 0x00;   P3M0 = 0x00;
+  312   1          P4M1 = 0x00;   P4M0 = 0x00;
+  313   1          P5M1 = 0x00;   P5M0 = 0x00;
+  314   1          P6M1 = 0x00;   P6M0 = 0x00;
+  315   1          P7M1 = 0x00;   P7M0 = 0x00;
+  316   1          
+  317   1          P2M0 |= 0x2F;   // P2.0/1/2/3/5 ������� (RST/DC/CS/MOSI/SCLK)
+  318   1          P2M1 &= ~0x2F;
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 6   
 
-  319   1          TMOD &= 0xF0;               // 清T0模式位，M1=0 M0=0
-  320   1      
-  321   1          // 1T模式：AUXR.7 = T0x12 = 1
-  322   1          AUXR |= 0x80;
-  323   1      
-  324   1          // 设置重载值
-  325   1          TH0 = T0_RELOAD >> 8;       // 高字节 = 0x7E
-  326   1          TL0 = T0_RELOAD & 0xFF;     // 低字节 = 0x67
-  327   1      
-  328   1          // 清中断标志，使能T0中断
-  329   1          TF0 = 0;
-  330   1          ET0 = 1;
-  331   1          EA  = 1;
-  332   1      
-  333   1          // 启动定时器0
-  334   1          TR0 = 1;
-  335   1      }
-  336          
-  337          void main(void)
-  338          {
-  339   1          Sys_init();
-  340   1          CLK_Init();
-  341   1          SPI_Init();
-  342   1          UART1_Init();
-  343   1          UART2_Init();
-  344   1          Timer0_Init();
-  345   1          PWM_Init();
-  346   1          PWMB_Encoder_Init();
-  347   1          OLED_Init();
-  348   1          OLED_BuffClear();
-  349   1          PWM_SetDuty(PWM_ARR / 4);
-  350   1          OLED_BuffShowString(0, 0, "Encod:", 0);
-  351   1          OLED_BuffShowString(0, 2, "Cnt:", 0);
-  352   1          while (1)
-  353   1          {
-  354   2              UART1_SendStr("Hello World!\r\n");
-  355   2              // Printf("pwmb: %d\r\n", g_enc_cnt);
-  356   2              if (disp_flag)
-  357   2              {
-  358   3                  disp_flag = 0;
-  359   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
-  360   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
-  361   3                  OLED_BuffShow();
-  362   3              }
-  363   2          }
-  364   1      }
-  365          
-  366          
-  367          void UART1_ISR(void) interrupt 4
-  368          {
-  369   1              unsigned char dat;
-  370   1          if (RI)
-  371   1          {
-  372   2              RI = 0;
-  373   2              // 此处处理接收到的调试命令
-  374   2              dat = SBUF;
-  375   2              // TODO: 添加调试命令解析
-  376   2          }
-  377   1          if (TI)
-  378   1          {
-  379   2              TI = 0;
-  380   2          }
-  381   1      }
-  382          
-  383          
-  384          // void PWMB_ISR(void) interrupt 27
-C251 COMPILER V5.60.0,  main                                                               13/03/26  16:31:34  PAGE 7   
+  319   1      
+  320   1      }
+  321          
+  322          void UART1_SendByte(unsigned char dat)
+  323          {
+  324   1          SBUF = dat;
+  325   1          while (!TI);                // 等待发送完成
+  326   1          TI = 0;
+  327   1      }
+  328          
+  329          void UART1_SendStr(unsigned char *str)
+  330          {
+  331   1          while (*str)
+  332   1              UART1_SendByte(*str++);
+  333   1      }
+  334          void Printf(const char *fmt, ...)
+  335          {
+  336   1          char buf[100];  // 缓冲区，根据需要调整大小
+  337   1          va_list args;
+  338   1          int len;
+  339   1          
+  340   1          va_start(args, fmt);
+  341   1          len = vsprintf(buf, fmt, args);
+  342   1          va_end(args);
+  343   1          
+  344   1          UART1_SendStr((unsigned char *)buf);
+  345   1      }
+  346          void Timer0_Init(void)
+  347          {
+  348   1          // 定时器0模式0：16位自动重载
+  349   1          // TMOD低4位控制T0：M1M0=00
+  350   1          TMOD &= 0xF0;               // 清T0模式位，M1=0 M0=0
+  351   1      
+  352   1          // 1T模式：AUXR.7 = T0x12 = 1
+  353   1          AUXR |= 0x80;
+  354   1      
+  355   1          // 设置重载值
+  356   1          TH0 = T0_RELOAD >> 8;       // 高字节 = 0x7E
+  357   1          TL0 = T0_RELOAD & 0xFF;     // 低字节 = 0x67
+  358   1      
+  359   1          // 清中断标志，使能T0中断
+  360   1          TF0 = 0;
+  361   1          ET0 = 1;
+  362   1          EA  = 1;
+  363   1      
+  364   1          // 启动定时器0
+  365   1          TR0 = 1;
+  366   1      }
+  367          
+  368          void main(void)
+  369          {
+  370   1          Sys_init();
+  371   1          CLK_Init();
+  372   1          SPI_Init();
+  373   1          UART1_Init();
+  374   1          UART2_Init();
+  375   1          Timer0_Init();
+  376   1          PWM_Init();
+  377   1          PWMB_Encoder_Init();
+  378   1          OLED_Init();
+  379   1          OLED_BuffClear();
+  380   1          PWM_SetDuty(PWM_ARR / 4);
+  381   1          OLED_BuffShowString(0, 0, "Encod:", 0);
+  382   1          OLED_BuffShowString(0, 2, "Cnt:", 0);
+  383   1          while (1)
+  384   1          {
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 7   
 
-  385          // {
-  386          //     TOG = ~TOG;  // 测试用GPIO翻转，观察PWM占空比变化
-  387          //     if (PWMB_SR1 & 0x02)            // CC1IF: 通道1事件
-  388          //     {
-  389          //         g_enc_cnt  = (unsigned int)PWMB_CNTRH << 8;
-  390          //         g_enc_cnt |= PWMB_CNTRL;
-  391          //         B_Change = 1;
-  392          //     }
-  393          //     PWMB_SR1 = 0x00;
-  394          //     PWMB_SR2 = 0x00;
-  395          // }
+  385   2              UART1_SendStr("Hello World!\r\n");
+  386   2              Printf("cnt: %d\r\n", g_enc_cnt);
+  387   2              if (disp_flag)
+  388   2              {
+  389   3                  disp_flag = 0;
+  390   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
+  391   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
+  392   3                  OLED_BuffShow();
+  393   3              }
+  394   2          }
+  395   1      }
   396          
   397          
-  398          void Timer0_ISR(void) interrupt 1
+  398          void UART1_ISR(void) interrupt 4
   399          {
-  400   1          ms_tick++;                  // 系统时基累加
-  401   1      
-  402   1          // ---- 编码器采样（每10ms读一次）----
-  403   1          if (ms_tick % 10 == 0)
-  404   1          {
-  405   2              g_enc_cnt = Encoder_Read();
-  406   2          }
-  407   1      
-  408   1          // ---- OLED刷新（每200ms一次）----
-  409   1          if (ms_tick % 20 == 0)
-  410   1          {
-  411   2              disp_flag = 1;
-  412   2          }
-  413   1          if(ms_tick >= 10000) ms_tick = 0; // 防止溢出
-  414   1          // ---- MODBUS 3.5字符超时检测（9600bps约4ms）----
-  415   1          // 在此处递减超时计数器，具体见MODBUS实现
-  416   1      }
-  417          
+  400   1              unsigned char dat;
+  401   1          if (RI)
+  402   1          {
+  403   2              RI = 0;
+  404   2              // 此处处理接收到的调试命令
+  405   2              dat = SBUF;
+  406   2              // TODO: 添加调试命令解析
+  407   2          }
+  408   1          if (TI)
+  409   1          {
+  410   2              TI = 0;
+  411   2          }
+  412   1      }
+  413          
+  414          
+  415          // void PWMB_ISR(void) interrupt 27
+  416          // {
+  417          //     TOG = ~TOG;  // 测试用GPIO翻转，观察PWM占空比变化
+  418          //     if (PWMB_SR1 & 0x02)            // CC1IF: 通道1事件
+  419          //     {
+  420          //         g_enc_cnt  = (unsigned int)PWMB_CNTRH << 8;
+  421          //         g_enc_cnt |= PWMB_CNTRL;
+  422          //         B_Change = 1;
+  423          //     }
+  424          //     PWMB_SR1 = 0x00;
+  425          //     PWMB_SR2 = 0x00;
+  426          // }
+  427          
+  428          
+  429          void Timer0_ISR(void) interrupt 1
+  430          {
+  431   1          ms_tick++;                  // 系统时基累加
+  432   1      
+  433   1          // ---- 编码器采样（每10ms读一次）----
+  434   1          if (ms_tick % 10 == 0)
+  435   1          {
+  436   2              g_enc_cnt = Encoder_Read();
+  437   2          }
+  438   1      
+  439   1          // ---- OLED刷新（每200ms一次）----
+  440   1          if (ms_tick % 20 == 0)
+  441   1          {
+  442   2              disp_flag = 1;
+  443   2          }
+  444   1          if(ms_tick >= 10000) ms_tick = 0; // 防止溢出
+  445   1          // ---- MODBUS 3.5字符超时检测（9600bps约4ms）----
+  446   1          // 在此处递减超时计数器，具体见MODBUS实现
+  447   1      }
+  448          
 
+
+C251 COMPILER V5.60.0,  main                                                               13/03/26  16:35:57  PAGE 8   
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      3974     ------
+  code size            =      4034     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -460,7 +493,7 @@ Module Information          Static   Overlayable
   far data size        =    ------     ------
   huge data size       =    ------     ------
   const size           =    ------     ------
-  hconst size          =        41     ------
+  hconst size          =        51     ------
 End of Module Information.
 
 

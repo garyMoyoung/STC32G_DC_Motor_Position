@@ -25,7 +25,7 @@
 
 #define T0_RELOAD   (65536 - FOSC / 1000)      // = 32359
 
-unsigned int  g_enc_cnt; 
+int  g_enc_cnt;
 bit           B_Change;         // 计数变化标志
 volatile bit disp_flag = 0;        // OLED刷新标志
 volatile unsigned int ms_tick = 0;     // 系统毫秒计数器
@@ -232,39 +232,70 @@ void PWMB_Encoder_Init(void)
     EAXFR = 1;
     P_SW2 |= 0x80;
 
-    PWMB_ENO    = 0x0;                      // Disable all ENO
-    PWMB_PS     = 0x0;                      // 00:PWM at P1
-    PWMB_PSCRH  = 0x0;                      // Set prescaler = 0x0
-    PWMB_PSCRL  = 0x0;
+    PWMB_ENO    = 0x00;                     // 禁用所有输出
+    PWMB_PS     = 0x00;                     // 引脚映射到默认位置 (P2.0/P2.1)
     
-    PWMB_ARRH   = 0xFF;                     // ARR高字节 = 0xFF
+    // 预分频设置
+    PWMB_PSCRH  = 0x00;
+    PWMB_PSCRL  = 0x00;
+    
+    // 自动重装载值（16位，支持有符号）
+    PWMB_ARRH   = 0xFF;
     PWMB_ARRL   = 0xFF;
 
-    PWMB_CNTRH  = 0x00;                     // 计数器高字节 = 0
+    // 计数器初值
+    PWMB_CNTRH  = 0x00;
     PWMB_CNTRL  = 0x00;
 
-    PWMB_CCMR1  = 0x21;                     // Set model as Input, Encoder, filter 4 clock
-    PWMB_CCMR2  = 0x21;                     // Set mode as input, Encode, Filter 4 clock
-    PWMB_SMCR   = 0x03;                     // Encode Mode 3
+    // ===== 关键：输入捕获模式配置 =====
+    // CCMR1: IC1F[7:4] = 0011(滤波), CC1S[1:0] = 01(TI1输入)
+    // = 0011_0001 = 0x31
+    PWMB_CCMR1  = 0x31;        // TI1输入，滤波4时钟
     
-    PWMB_CCER1  = 0x55;                     // Input channe    l enable and polarity
-    PWMB_CCER2  = 0x55;
+    // CCMR2: IC2F[7:4] = 0011(滤波), CC2S[1:0] = 01(TI2输入)  
+    // = 0011_0001 = 0x31
+    PWMB_CCMR2  = 0x31;        // TI2输入，滤波4时钟
+ 
+    // ===== 编码器模式：双边沿计数 =====
+    // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
+    PWMB_SMCR   = 0x03;
+ 
+    // ===== 极性配置 =====
+    // CC1E=1, CC1P=0, CC2E=1, CC2P=0
+    // 这样可以正确检测方向
+    // CCER1 = 0000_0101 = 0x05
+    // CCER2 = 0000_0101 = 0x05
+    PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
+    PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
     
-//    PWMB_IER    = 0x02;                     // Enable interrupt
+    // 禁用中断（轮询模式）
+    PWMB_IER    = 0x00;
     
-    PWMB_CR1    |= 0x01;                    // Enable counter
+    // 启动计数器
+    PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
 
-    P_SW2 &= ~0x80;                         // 关闭扩展SFR访问
+    P_SW2 &= ~0x80;
     EAXFR = 0;
 }
 
-unsigned int Encoder_Read(void)
+int Encoder_Read(void)
 {
-    unsigned int cnt;
-    P_SW2 |= 0x80;      // 使能扩展SFR访问
-    cnt  = (unsigned int)PWMB_CNTRH << 8;
-    cnt |= PWMB_CNTRL;
+    int cnt;
+    unsigned int raw;
+    
+    P_SW2 |= 0x80;
+    raw  = (unsigned int)PWMB_CNTRH << 8;
+    raw |= PWMB_CNTRL;
     P_SW2 &= ~0x80;
+    
+    // 转换为有符号16位整数
+    // 如果最高位为1，则为负数
+    if (raw & 0x8000) {
+        cnt = -(int)(0x10000 - raw);  // 补码转换
+    } else {
+        cnt = (int)raw;
+    }
+    
     return cnt;
 }
 
@@ -352,7 +383,7 @@ void main(void)
     while (1)
     {
         UART1_SendStr("Hello World!\r\n");
-        // Printf("pwmb: %d\r\n", g_enc_cnt);
+        Printf("cnt: %d\r\n", g_enc_cnt);
         if (disp_flag)
         {
             disp_flag = 0;
