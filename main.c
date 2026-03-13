@@ -17,6 +17,11 @@
 #define RS485_TX        1       // 发送模式
 #define RS485_RX        0       // 接收模式
 
+#define PWM_FREQ        20000
+#define PWM_ARR         (FOSC / PWM_FREQ)                   // = 1658
+#define PWM_DEAD_TIME   60      // 死区时间约 60/33.1776M ≈ 1.8us
+
+
 void CLK_Init(void)
 {
     P_SW2 |= 0x80;              // 使能扩展XFR寄存器访问
@@ -121,6 +126,11 @@ void PWM_Init(void)
     P2M0 |=  0x03;
     P2M1 &= ~0x03;
 
+    // 引脚切换：PWMA CH1 映射到 P2.0(PWM1P) / P2.1(PWM1N)
+    // C1PS[1:0]=01 → P2.0(PWM1P)，C1NPS[3:2]=01 → P2.1(PWM1N)
+    PWMA_PS &= ~0x0F;
+    PWMA_PS |=  0x05;
+
     // ---- PWMA 主控寄存器 ----
 
     // PWMx_CR1：控制寄存器1
@@ -192,6 +202,66 @@ void PWM_Init(void)
     P_SW2 &= ~0x80;
 }
 
+void Encoder_Init(void)
+{
+    P_SW2 |= 0x80;              // 使能扩展SFR访问
+
+    // P1.4, P1.5 设为高阻输入（编码器信号输入）
+    P1M0 &= ~0x30;              // bit4,5清0
+    P1M1 |=  0x30;              // bit4,5置1 → 高阻输入模式
+
+    // 功能脚切换：PWMB CH1/CH2 切换到 P1.4/P1.5
+    // PWM2_PS[5:4] = C2PS[1:0] = 01
+    PWMB_PS &= ~0x30;    // 清 C2PS[1:0]（bit5:4）
+    PWMB_PS |=  0x10;    // 置01 → P1.4/P1.5
+
+    // ---- PWMB 编码器模式配置 ----
+
+    // SMCR：从模式控制寄存器
+    // SMS[2:0]=011：编码器模式3（TI1和TI2边沿都计数，4倍频）
+    PWMB_SMCR = 0x03;
+
+    // CCMR1：通道1（A相）
+    // CC1S=01：配置为输入，映射到TI1
+    // IC1F=0000：不滤波
+    PWMB_CCMR1 = 0x01;
+
+    // CCMR2：通道2（B相）
+    // CC2S=01：配置为输入，映射到TI2
+    // IC2F=0000：不滤波
+    PWMB_CCMR2 = 0x01;
+
+    // CCER1：极性与使能
+    // CC1P=0：TI1不反相，上升沿有效
+    // CC1E=1：通道1捕获使能
+    // CC2P=0：TI2不反相，上升沿有效
+    // CC2E=1：通道2捕获使能
+    PWMB_CCER1 = 0x11;
+
+    // ARR：最大值，计数器自由溢出（有符号差值处理溢出）
+    PWMB_ARRH  = 0xFF;
+    PWMB_ARRL  = 0xFF;
+
+    // PSC：不分频，每个编码器脉冲计1次
+    PWMB_PSCRH = 0x00;
+    PWMB_PSCRL = 0x00;
+
+    // 启动 PWMB 计数器
+    PWMB_CR1   = 0x01;          // CEN=1
+
+    P_SW2 &= ~0x80;
+}
+
+
+void PWM_SetDuty(unsigned int duty)
+{
+    if (duty > PWM_ARR) duty = PWM_ARR;
+    P_SW2 |= 0x80;
+    PWMA_CCR1H = duty >> 8;
+    PWMA_CCR1L = duty & 0xFF;
+    P_SW2 &= ~0x80;
+}
+
 void Sys_init(void)
 {
     EAXFR = 1;
@@ -232,12 +302,13 @@ void main(void)
     SPI_Init();
     UART1_Init();
     UART2_Init();
+    PWM_Init();
     OLED_Init();
     OLED_BuffClear();
     OLED_BuffShowString(0,0,"Press any key to",0);
     OLED_BuffShowString(0,2,"start fucker",0);
     OLED_BuffShow();
-
+    PWM_SetDuty(PWM_ARR / 4);   // 50% 占空比
     while (1)
     {
         UART1_SendStr("Hello World!\r\n");

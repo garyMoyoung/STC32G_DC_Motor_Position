@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 1   
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE oled
@@ -9,7 +9,6 @@ COMPILER INVOKED BY: D:\Keil MDK\C251\BIN\C251.EXE oled.c XSMALL INTR2 BROWSE DE
 stmt  level    source
 
     1          #include "oled.h"
-*** WARNING C323 IN LINE 1 OF oled.h: newline expected, extra characters found
 *** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
 *** WARNING C323 IN LINE 16 OF spi.h: newline expected, extra characters found
     2          
@@ -66,9 +65,9 @@ stmt  level    source
    50          
    51          
    52          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 2   
-
    53          //========================================================================
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 2   
+
    54          
    55          // ��������: delay_ms
    56          
@@ -134,9 +133,9 @@ stmt  level    source
   116   1      
   117   1          udat[0] = dat;
   118   1      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 3   
-
   119   1          if(cmd)
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 3   
+
   120   1      
   121   1          {
   122   2      
@@ -202,9 +201,9 @@ stmt  level    source
   181   1          OLED_REST=0;//��λ
   182   1      
   183   1          delay_ms(200);
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 4   
-
   184   1      
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 4   
+
   185   1          OLED_REST = 1;
   186   1      
   187   1      
@@ -270,9 +269,9 @@ stmt  level    source
   246   1      
   247   1          OLED_DisplayOn();
   248   1      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 5   
-
   249   1      }
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 5   
+
   250          
   251          
   252          
@@ -338,9 +337,9 @@ stmt  level    source
   311          void OLED_DrawBMP(unsigned char x0, unsigned char y0,unsigned char x1, unsigned char y1,unsigned char BMP
              -[])
   312          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 6   
-
   313          {       
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 6   
+
   314   1      
   315   1          unsigned int xdata j=0;
   316   1      
@@ -406,9 +405,9 @@ stmt  level    source
   376          
   377          // ��������: OLED_DisplayOff
   378          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 7   
-
   379          // ��������: OLED����ʾ
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 7   
+
   380          
   381          // ��ڲ���: ��
   382          
@@ -474,9 +473,9 @@ stmt  level    source
   442          
   443          
   444          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 8   
-
   445          
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 8   
+
   446          
   447          //========================================================================
   448          
@@ -542,9 +541,9 @@ stmt  level    source
   507   2              j = 0xb0 + i;             //C251�����Ͻ�������д�Ա���warning
   508   2      
   509   2              OLED_WR_Byte(j,OLED_CMD); //��������ʼ��ַ
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 9   
-
   510   2      
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 9   
+
   511   2              OLED_WR_Byte(0x00,OLED_CMD);   //���õ�����ʼ��ַ    // �޸ĵ�����
              -�ʼ�������������Ļ��ʾ��ȫ
   512   2      
@@ -610,9 +609,9 @@ stmt  level    source
   571          // ��ǰ����: ZCF
   572          
   573          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 10  
-
              -�����
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 10  
+
   574          
   575          //========================================================================
   576          
@@ -678,9 +677,9 @@ stmt  level    source
   634   3      
   635   3              }
   636   2      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 11  
-
   637   2          }
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 11  
+
   638   1      
   639   1      }
   640          
@@ -746,9 +745,9 @@ stmt  level    source
   698          
   699          void OLED_BuffShowCircle(unsigned char x, unsigned char y, unsigned char r)
   700          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 12  
-
   701          {
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 12  
+
   702   1      
   703   1          int a, b;
   704   1      
@@ -814,9 +813,9 @@ stmt  level    source
   764   2      
   765   2              if (di < 0)di += 4 * a + 6;
   766   2      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 13  
-
   767   2              else
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 13  
+
   768   2      
   769   2              {
   770   3      
@@ -882,9 +881,9 @@ stmt  level    source
   827   2          }    
   828   1      
   829   1      }
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 14  
-
   830          
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 14  
+
   831          
   832          
   833          //========================================================================
@@ -950,9 +949,9 @@ stmt  level    source
   888   5      
   889   5                              ShowBUFF[j+y][x+k]=GBK16[i].gbk_font[j*16+k];
   890   5      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 15  
-
   891   5                          else
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 15  
+
   892   5      
   893   5                              ShowBUFF[j+y][x+k]=~GBK16[i].gbk_font[j*16+k];
   894   5      
@@ -1018,9 +1017,9 @@ stmt  level    source
   950   3      
   951   3              }
   952   2      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 16  
-
   953   2              else
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 16  
+
   954   2      
   955   2              {
   956   3      
@@ -1086,9 +1085,9 @@ stmt  level    source
  1014   1      
  1015   1          OLED_BuffShowString(x,y,(unsigned char*)str, mode);
  1016   1      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 17  
-
  1017   1      }
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 17  
+
  1018          
  1019          
  1020          
@@ -1154,9 +1153,9 @@ stmt  level    source
  1076          
  1077          //          �õ�����Ҫ�Լ�ȡģŶ
  1078          
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 18  
-
  1079          //========================================================================
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 18  
+
  1080          
  1081          void OLED_BuffShowChar32(unsigned char  x,unsigned char  y,unsigned char num, unsigned char mode)     
  1082          
@@ -1222,9 +1221,9 @@ stmt  level    source
  1140   1      
  1141   1          
  1142   1      
-C251 COMPILER V5.60.0,  oled                                                               12/03/26  19:59:52  PAGE 19  
-
  1143   1          for( j=0;j<y1;j++ )
+C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 19  
+
  1144   1      
  1145   1          {
  1146   2      
@@ -1264,4 +1263,4 @@ Module Information          Static   Overlayable
 End of Module Information.
 
 
-C251 COMPILATION COMPLETE.  7 WARNING(S),  0 ERROR(S)
+C251 COMPILATION COMPLETE.  6 WARNING(S),  0 ERROR(S)
