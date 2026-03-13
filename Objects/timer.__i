@@ -1,0 +1,1 @@
+"timer.c" XSMALL INTR2 BROWSE DEBUG PRINT(.\Listings\timer.lst) OBJECT(.\Objects\timer.obj)
