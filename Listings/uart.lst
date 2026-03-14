@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  uart                                                               13/03/26  17:26:53  PAGE 1   
+C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE uart
@@ -66,7 +66,7 @@ stmt  level    source
    56          
    57          
    58          void UART2_Init(void)
-C251 COMPILER V5.60.0,  uart                                                               13/03/26  17:26:53  PAGE 2   
+C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 2   
 
    59          {
    60   1          // 配置 P4.6 为 RXD2（输入），P4.7 为 TXD2（推挽输出）
@@ -75,110 +75,106 @@ stmt  level    source
    63   1          P4M0 &= ~0x40;              // P4.6 准双向（输入）
    64   1          P4M1 &= ~0x40;
    65   1      
-   66   1          // P1.2 RS485 方向控制脚，推挽输出
-   67   1          P1M0 |=  0x04;
-   68   1          P1M1 &= ~0x04;
-   69   1      
-   70   1          // 串口2控制寄存器（S2CON）
-   71   1          // S2SM0=0, S2SM1=1：8位UART模式
-   72   1          // S2REN=1：允许接收
-   73   1          S2CON = 0x50;
-   74   1      
-   75   1          // 使能扩展SFR访问，配置定时器2
-   76   1          P_SW2 |= 0x80;
+   66   1          // 串口2控制寄存器（S2CON）
+   67   1          // S2SM0=0, S2SM1=1：8位UART模式
+   68   1          // S2REN=1：允许接收
+   69   1          S2CON = 0x50;
+   70   1      
+   71   1          // 使能扩展SFR访问，配置定时器2
+   72   1          P_SW2 |= 0x80;
+   73   1      
+   74   1          // 定时器2，16位自动重装，1T模式（AUXR.2=1）
+   75   1          AUXR |= 0x04;
+   76   1          AUXR |= 0x14;               // T2x12=1(1T模式), T2R=1(启动T2)
    77   1      
-   78   1          // 定时器2，16位自动重装，1T模式（AUXR.2=1）
-   79   1          AUXR |= 0x04;
-   80   1          AUXR |= 0x14;               // T2x12=1(1T模式), T2R=1(启动T2)
+   78   1          // 配置T2重载值（T2L/T2H 属扩展SFR）
+   79   1          T2L = UART2_RELOAD & 0xFF;
+   80   1          T2H = UART2_RELOAD >> 8;
    81   1      
-   82   1          // 配置T2重载值（T2L/T2H 属扩展SFR）
-   83   1          T2L = UART2_RELOAD & 0xFF;
-   84   1          T2H = UART2_RELOAD >> 8;
+   82   1          // 串口2引脚切换：RxD2→P4.6, TxD2→P4.7
+   83   1          // 使用位操作，避免误清 EAXFR 等其他位
+   84   1          S2_S = 1;
    85   1      
-   86   1          // 串口2引脚切换：RxD2→P4.6, TxD2→P4.7
-   87   1          // 使用位操作，避免误清 EAXFR 等其他位
-   88   1          S2_S = 1;
-   89   1      
-   90   1          P_SW2 &= ~0x80;
-   91   1      
-   92   1          // 使能串口2中断
-   93   1          IE2 |= 0x01;                // ES2=1
-   94   1          EA = 1;
-   95   1      }
-   96          
-   97          
-   98          void UART1_SendByte(unsigned char dat)
-   99          {
-  100   1          SBUF = dat;
-  101   1          while (!TI);                // 等待发送完成
-  102   1          TI = 0;
-  103   1      }
-  104          
-  105          void UART1_SendStr(unsigned char *str)
-  106          {
-  107   1          while (*str)
-  108   1              UART1_SendByte(*str++);
-  109   1      }
-  110          
-  111          void UART2_SendByte(unsigned char dat)
-  112          {
-  113   1          /* 等待缓冲区有空位 */
-  114   1          unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
-  115   1          while (next == uart2_tx_tail);      // 缓冲区满则等待
-  116   1      
-  117   1          uart2_tx_buf[uart2_tx_head] = dat;
-  118   1          uart2_tx_head = next;
-  119   1      
-  120   1          /* 若发送空闲则立即启动 */
-  121   1          if (!uart2_tx_busy)
-  122   1          {
-  123   2              uart2_tx_busy = 1;
-  124   2              S2BUF = uart2_tx_buf[uart2_tx_tail];
-C251 COMPILER V5.60.0,  uart                                                               13/03/26  17:26:53  PAGE 3   
+   86   1          P_SW2 &= ~0x80;
+   87   1      
+   88   1          // 使能串口2中断
+   89   1          IE2 |= 0x01;                // ES2=1
+   90   1          EA = 1;
+   91   1      }
+   92          
+   93          
+   94          void UART1_SendByte(unsigned char dat)
+   95          {
+   96   1          SBUF = dat;
+   97   1          while (!TI);                // 等待发送完成
+   98   1          TI = 0;
+   99   1      }
+  100          
+  101          void UART1_SendStr(unsigned char *str)
+  102          {
+  103   1          while (*str)
+  104   1              UART1_SendByte(*str++);
+  105   1      }
+  106          
+  107          void UART2_SendByte(unsigned char dat)
+  108          {
+  109   1          /* 等待缓冲区有空位 */
+  110   1          unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
+  111   1          while (next == uart2_tx_tail);      // 缓冲区满则等待
+  112   1      
+  113   1          uart2_tx_buf[uart2_tx_head] = dat;
+  114   1          uart2_tx_head = next;
+  115   1      
+  116   1          /* 若发送空闲则立即启动 */
+  117   1          if (!uart2_tx_busy)
+  118   1          {
+  119   2              uart2_tx_busy = 1;
+  120   2              S2BUF = uart2_tx_buf[uart2_tx_tail];
+  121   2              uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+  122   2          }
+  123   1      }
+  124          
+C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 3   
 
-  125   2              uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-  126   2          }
-  127   1      }
-  128          
-  129          void UART2_SendString(unsigned char *str)
-  130          {
-  131   1          while (*str)
-  132   1              UART2_SendByte(*str++);
-  133   1      }
-  134          
-  135          /*------------------------------------------------------------------------------
-  136           * 读取接收缓冲区（返回0表示缓冲区空）
-  137           *----------------------------------------------------------------------------*/
-  138          bit UART2_ReadByte(unsigned char *dat)
-  139          {
-  140   1          if (uart2_rx_head == uart2_rx_tail)
-  141   1              return 0;                       // 缓冲区空
-  142   1      
-  143   1          *dat = uart2_rx_buf[uart2_rx_tail];
-  144   1          uart2_rx_tail = (uart2_rx_tail + 1) % UART2_BUF_SIZE;
-  145   1          return 1;
-  146   1      }
-  147          
-  148          
-  149          void Printf(const char *fmt, ...)
-  150          {
-  151   1          char buf[100];  // 缓冲区，根据需要调整大小
-  152   1          va_list args;
-  153   1          int len;
+  125          void UART2_SendString(unsigned char *str)
+  126          {
+  127   1          while (*str)
+  128   1              UART2_SendByte(*str++);
+  129   1      }
+  130          
+  131          /*------------------------------------------------------------------------------
+  132           * 读取接收缓冲区（返回0表示缓冲区空）
+  133           *----------------------------------------------------------------------------*/
+  134          bit UART2_ReadByte(unsigned char *dat)
+  135          {
+  136   1          if (uart2_rx_head == uart2_rx_tail)
+  137   1              return 0;                       // 缓冲区空
+  138   1      
+  139   1          *dat = uart2_rx_buf[uart2_rx_tail];
+  140   1          uart2_rx_tail = (uart2_rx_tail + 1) % UART2_BUF_SIZE;
+  141   1          return 1;
+  142   1      }
+  143          
+  144          
+  145          void Printf(const char *fmt, ...)
+  146          {
+  147   1          char buf[100];  // 缓冲区，根据需要调整大小
+  148   1          va_list args;
+  149   1          int len;
+  150   1          
+  151   1          va_start(args, fmt);
+  152   1          len = vsprintf(buf, fmt, args);
+  153   1          va_end(args);
   154   1          
-  155   1          va_start(args, fmt);
-  156   1          len = vsprintf(buf, fmt, args);
-  157   1          va_end(args);
-  158   1          
-  159   1          UART1_SendStr((unsigned char *)buf);
-  160   1      }
-  161          
-  162          
+  155   1          UART1_SendStr((unsigned char *)buf);
+  156   1      }
+  157          
+  158          
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =       284     ------
+  code size            =       278     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
