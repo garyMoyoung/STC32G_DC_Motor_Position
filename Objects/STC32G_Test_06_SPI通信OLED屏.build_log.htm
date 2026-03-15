@@ -25,12 +25,8 @@ Project File Date:  03/15/2026
 Build target 'Target 1'
 compiling main.c...
 main.c(346): warning C47: 'k': unreferenced local variable
-compiling uart.c...
-compiling timer.c...
-compiling rs485.c...
-rs485.c(111): warning C188: 'parameter 2': value truncated
-rs485.c(145): warning C188: 'parameter 1': value truncated
-rs485.c(171): warning C188: 'parameter 1': value truncated
+compiling key.c...
+key.c(58): warning C174: 'Buzzer_Update': unreferenced 'static' function
 linking...
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_BuffShowCircle/oled
@@ -51,13 +47,15 @@ linking...
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    UART2_ReadByte/uart
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
-    NAME:    Key_Init/key
-*** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    Key_IsPressed/key
-Program Size: data=8.3 edata+hdata=846 xdata=1047 const=428 code=14912
+*** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
+    NAME:    Buzzer_IsBusy/key
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    NAME:    Buzzer_Update/key
+Program Size: data=8.3 edata+hdata=852 xdata=1047 const=534 code=15141
 creating hex file from ".\Objects\STC32G_Test_06_SPI通信OLED屏"...
-".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 15 Warning(s).
-Build Time Elapsed:  00:00:01
+".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 14 Warning(s).
+Build Time Elapsed:  00:00:00
 </pre>
 </body>
 </html>

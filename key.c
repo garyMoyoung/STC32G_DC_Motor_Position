@@ -1,20 +1,120 @@
-/*==============================================================================
- * key.c  —  按键检测模块（支持单击、双击、长按）
- * 硬件：STC32G + P4.4(KEY1)/P4.3(KEY2)/P4.2(KEY3)
- * 功能：去抖、单击、双击、长按检测
- *============================================================================*/
-
 #include "key.h"
 #include "uart.h"
-
+#include <STC32G.H>
 /*=============================================================================
  * 全局按键对象
  *===========================================================================*/
 KEY_Struct key1, key2, key3;
+extern volatile unsigned int ms_tick;
+
+typedef struct {
+    unsigned char state;            /* BUZZER_IDLE / BUZZER_ON / BUZZER_OFF */
+    unsigned char tone_type;        /* 当前播放的音效类型 */
+    unsigned int start_ms;          /* 当前段的开始时间（ms_tick） */
+    unsigned char seg_index;        /* 当前播放的段序号 */
+    unsigned char seg_count;        /* 总段数 */
+} Buzzer_t;
+
+static Buzzer_t g_buzzer = {
+    BUZZER_IDLE, TONE_NONE, 0, 0, 0
+};
+
+/* 音效数据表：每个音效由多个段组成 */
+/* 每段：持续时间(ms), 是否开启(1=ON, 0=OFF) */
+static const struct {
+    unsigned int duration_ms;
+    unsigned char is_on;
+} g_tone_segments[][8] = {
+    /* [TONE_NONE] = {} 空音效 */
+    {
+        {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}  // TONE_NONE
+    },
+    
+    /* [TONE_POWER_ON] = 三声上升（短→中→长） */
+    {
+        {100, 1},   /* 100ms 开 */
+        {80, 0},    /* 80ms 关 */
+        {150, 1},   /* 150ms 开 */
+        {80, 0},    /* 80ms 关 */
+        {200, 1},   /* 200ms 开 */
+        {0, 0}      /* 结束标记 */
+    },
+    
+    /* [TONE_SINGLE_CLICK] = 单击提示（一短声） */
+    {
+        {50, 1},    /* 50ms 开 */
+        {0, 0}      /* 结束标记 */
+    },
+    
+    /* [TONE_DOUBLE_CLICK] = 双击提示（两短声） */
+    {
+        {80, 1},    /* 80ms 开 */
+        {60, 0},    /* 60ms 关 */
+        {80, 1},    /* 80ms 开 */
+        {0, 0}      /* 结束标记 */
+    }
+};
+
+static void Buzzer_Update(void)
+{
+    unsigned int elapsed_ms;
+    
+    /* 空闲状态，不做任何事 */
+    if (g_buzzer.state == BUZZER_IDLE)
+        return;
+    
+    /* 计算当前段已经过的时间 */
+    elapsed_ms = ms_tick - g_buzzer.start_ms;
+    
+    /* 当前段时间已到，切换到下一段 */
+    if (elapsed_ms >= g_tone_segments[g_buzzer.tone_type][g_buzzer.seg_index].duration_ms)
+    {
+        g_buzzer.seg_index++;
+        g_buzzer.start_ms = ms_tick;  /* 重置本段开始时间 */
+        
+        /* 检查是否到达最后一段（结束标记 duration_ms=0） */
+        if (g_tone_segments[g_buzzer.tone_type][g_buzzer.seg_index].duration_ms == 0)
+        {
+            BUZZER = 0;              /* 确保蜂鸣器关闭 */
+            g_buzzer.state = BUZZER_IDLE;
+            g_buzzer.tone_type = TONE_NONE;
+            return;
+        }
+        
+        /* 设置新段的输出状态 */
+        if (g_tone_segments[g_buzzer.tone_type][g_buzzer.seg_index].is_on)
+            BUZZER = 1;  /* 开启 */
+        else
+            BUZZER = 0;  /* 关闭 */
+    }
+}
+
+
+void Buzzer_PlayTone(unsigned char tone_type)
+{
+    if (tone_type == TONE_NONE || tone_type > TONE_DOUBLE_CLICK)
+        return;
+    
+    g_buzzer.state = BUZZER_ON;
+    g_buzzer.tone_type = tone_type;
+    g_buzzer.seg_index = 0;
+    g_buzzer.start_ms = ms_tick;
+    
+    /* 立即设置第一段状态 */
+    if (g_tone_segments[tone_type][0].is_on)
+        BUZZER = 1;
+    else
+        BUZZER = 0;
+}
 
 /*=============================================================================
- * 按键初始化
+ * 查询蜂鸣器忙碌状态
  *===========================================================================*/
+unsigned char Buzzer_IsBusy(void)
+{
+    return (g_buzzer.state != BUZZER_IDLE);
+}
+
 void Key_Init(void)
 {
     // P4.2, P4.3, P4.4 已在 Sys_init() 中配置为准双向/输入模式

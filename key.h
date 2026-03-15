@@ -28,6 +28,37 @@ sbit KEY3_PIN = P4^2;  // KEY3 - P4.2
 #define KEY_LONG_PRESS_TIME     1000    // 长按判定时间
 #define KEY_DOUBLE_CLICK_INTERVAL 300   // 双击识别间隔（两次单击最大时间差）
 
+
+/*=============================================================================
+ * 蜂鸣器支持（已集成到 key.c 中）
+ *===========================================================================*/
+sbit BUZZER = P1^3;         /* P1.3 有源蜂鸣器 */
+
+/* 蜂鸣器状态 */
+#define BUZZER_IDLE             0           /* 空闲 */
+#define BUZZER_ON               1           /* 开启中 */
+#define BUZZER_OFF              2           /* 关闭中 */
+
+/* 音效类型 */
+#define TONE_NONE               0
+#define TONE_POWER_ON           1           /* 开机音效 */
+#define TONE_SINGLE_CLICK       2           /* 单击提示 */
+#define TONE_DOUBLE_CLICK       3           /* 双击提示 */
+
+/*
+ * 播放音效（非阻塞，状态机驱动）
+ * tone_type: TONE_POWER_ON, TONE_SINGLE_CLICK, TONE_DOUBLE_CLICK等
+ * 立即返回，由内部状态机在每1ms自动推进
+ */
+void Buzzer_PlayTone(unsigned char tone_type);
+
+/*
+ * 获取蜂鸣器是否忙碌
+ * 返回值：1=忙碌(正在播放), 0=空闲
+ */
+unsigned char Buzzer_IsBusy(void);
+
+
 /*=============================================================================
  * 按键结构体
  *===========================================================================*/
@@ -81,5 +112,9 @@ void Key_ClearEvent(unsigned char key_id);
 unsigned char Key_IsPressed(unsigned char key_id);
 
 unsigned char Key_HandleEvent(void);
+
+
+
+
 
 #endif /* __KEY_H__ */

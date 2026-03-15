@@ -356,6 +356,8 @@ void main(void)
     Modbus_Init();          /* 在 UART2_Init 之后调用 */
     PWM_SetDuty(0);         /* 上电先停机 */
 
+    Key_Init();
+    Buzzer_PlayTone(TONE_POWER_ON);
     /* PID 控制器初始化 */
     PID_Init(&g_pid_speed,
              PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD,
