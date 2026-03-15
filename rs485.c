@@ -303,6 +303,8 @@ void Modbus_RxByte(unsigned char dat)
 
     if (rx_len < MODBUS_BUF_SIZE)
         rx_buf[rx_len++] = dat;
+    Printf("RX[%d]: 0x%02X\r\n", rx_len-1, dat);  
+
     /* 溢出时直接丢弃，等超时后清空 */
 }
 

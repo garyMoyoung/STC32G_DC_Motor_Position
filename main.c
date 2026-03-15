@@ -82,9 +82,8 @@ void main(void)
 
         /* 原有调试输出（可保留或删除） */
         // UART2_SendString("UART2_Hello World!\r\n");
-        UART1_SendStr("Hello World!\r\n");
-        Printf("cnt: %d\r\n", g_enc_cnt);
-
+        Printf("cnt: %d\n", g_enc_cnt);
+        // Printf("[MB] rx_len=%d addr=%02X fc=%02X\r\n", rx_len, rx_buf[0], rx_buf[1]);
         if (disp_flag)
         {
             disp_flag = 0;

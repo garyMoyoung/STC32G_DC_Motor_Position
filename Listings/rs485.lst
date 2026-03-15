@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 1   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE rs485
@@ -66,7 +66,7 @@ stmt  level    source
    56   1          return crc;
    57   1      }
    58          
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 2   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 2   
 
    59          /*=============================================================================
    60           * 发送回复帧（含CRC，发送完毕后切回接收模式）
@@ -134,7 +134,7 @@ stmt  level    source
   121   1          {
   122   2              /*--------------------------------------------------------------------
   123   2               * FC=0x01  Read Coils
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 3   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 3   
 
   124   2               * 请求帧：[地址][01][起始高][起始低][数量高][数量低][CRC-L][CRC-H]
   125   2               * 响应帧：[地址][01][字节数][数据…][CRC-L][CRC-H]
@@ -202,7 +202,7 @@ stmt  level    source
   185   2                  if (coil_val)
   186   2                      modbus_coils |=  (1 << start_addr);
   187   2                  else
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 4   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 4   
 
   188   2                      modbus_coils &= ~(1 << start_addr);
   189   2      
@@ -270,7 +270,7 @@ stmt  level    source
   250   2                  tx_buf[5] = rx_buf[5];
   251   2                  SendResponse(6);
   252   2                  break;
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 5   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 5   
 
   253   2      
   254   2              /*--------------------------------------------------------------------
@@ -325,28 +325,30 @@ stmt  level    source
   303   1      
   304   1          if (rx_len < MODBUS_BUF_SIZE)
   305   1              rx_buf[rx_len++] = dat;
-  306   1          /* 溢出时直接丢弃，等超时后清空 */
-  307   1      }
-  308          
-  309          /*-----------------------------------------------------------------------------
-  310           * 主循环中轮询
-  311           *---------------------------------------------------------------------------*/
-  312          void Modbus_Poll(void)
-  313          {
-  314   1          if (!rx_done)
-  315   1              return;
-  316   1      
-  317   1          rx_done = 0;
-  318   1          ProcessFrame();
-C251 COMPILER V5.60.0,  rs485                                                              14/03/26  22:34:14  PAGE 6   
+  306   1          Printf("RX[%d]: 0x%02X\r\n", rx_len-1, dat);  
+  307   1      
+  308   1          /* 溢出时直接丢弃，等超时后清空 */
+  309   1      }
+  310          
+  311          /*-----------------------------------------------------------------------------
+  312           * 主循环中轮询
+  313           *---------------------------------------------------------------------------*/
+  314          void Modbus_Poll(void)
+  315          {
+  316   1          if (!rx_done)
+  317   1              return;
+  318   1      
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  11:51:34  PAGE 6   
 
-  319   1          rx_len = 0;             // 清空缓冲，准备下一帧
-  320   1      }
+  319   1          rx_done = 0;
+  320   1          ProcessFrame();
+  321   1          rx_len = 0;             // 清空缓冲，准备下一帧
+  322   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =       939     ------
+  code size            =       967     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -361,7 +363,7 @@ Module Information          Static   Overlayable
   far data size        =    ------     ------
   huge data size       =    ------     ------
   const size           =    ------     ------
-  hconst size          =        30     ------
+  hconst size          =        47     ------
 End of Module Information.
 
 

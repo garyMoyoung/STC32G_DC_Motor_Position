@@ -27,11 +27,7 @@ compiling main.c...
 spi.h(1): warning C323: newline expected, extra characters found
 spi.h(16): warning C323: newline expected, extra characters found
 spi.h(1): warning C323: newline expected, extra characters found
-main.c(116): warning C47: 'next': unreferenced local variable
-compiling rs485.c...
-rs485.c(111): warning C188: 'parameter 2': value truncated
-rs485.c(145): warning C188: 'parameter 1': value truncated
-rs485.c(171): warning C188: 'parameter 1': value truncated
+main.c(115): warning C47: 'next': unreferenced local variable
 linking...
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_BuffShowCircle/oled
@@ -53,14 +49,22 @@ linking...
     NAME:    UART2_SendString/uart
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    UART2_ReadByte/uart
+*** WARNING L15: MULTIPLE CALL TO FUNCTION
+    NAME:    Printf/uart
+    CALLER1: UART2_ISR/main
+    CALLER2: ?C_C51STARTUP?3
+*** WARNING L15: MULTIPLE CALL TO FUNCTION
+    NAME:    VSPRINTF/VSPRINTF
+    CALLER1: UART2_ISR/main
+    CALLER2: ?C_C51STARTUP?3
 *** WARNING L25: DATA TYPES DIFFERENT
     SYMBOL:  SPI_Init
     MODULE:  .\Objects\oled.obj (oled)
    DEFINED:  .\Objects\spi.obj (spi)
-Program Size: data=8.3 edata+hdata=731 xdata=1047 const=116 code=12641
+Program Size: data=8.3 edata+hdata=879 xdata=1047 const=117 code=12658
 creating hex file from ".\Objects\STC32G_Test_06_SPI通信OLED屏"...
-".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 18 Warning(s).
-Build Time Elapsed:  00:00:00
+".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 17 Warning(s).
+Build Time Elapsed:  00:00:01
 </pre>
 </body>
 </html>

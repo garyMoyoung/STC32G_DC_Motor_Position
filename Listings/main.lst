@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  main                                                               14/03/26  22:34:14  PAGE 1   
+C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE main
@@ -66,7 +66,7 @@ stmt  level    source
    53          
    54          void main(void)
    55          {
-C251 COMPILER V5.60.0,  main                                                               14/03/26  22:34:14  PAGE 2   
+C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 2   
 
    56   1          Sys_init();
    57   1          CLK_Init();
@@ -97,105 +97,104 @@ stmt  level    source
    82   2      
    83   2              /* 原有调试输出（可保留或删除） */
    84   2              // UART2_SendString("UART2_Hello World!\r\n");
-   85   2              UART1_SendStr("Hello World!\r\n");
-   86   2              Printf("cnt: %d\r\n", g_enc_cnt);
-   87   2      
-   88   2              if (disp_flag)
-   89   2              {
-   90   3                  disp_flag = 0;
-   91   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
-   92   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
-   93   3                  OLED_BuffShow();
-   94   3              }
-   95   2          }
-   96   1      }
+   85   2              Printf("cnt: %d\n", g_enc_cnt);
+   86   2              // Printf("[MB] rx_len=%d addr=%02X fc=%02X\r\n", rx_len, rx_buf[0], rx_buf[1]);
+   87   2              if (disp_flag)
+   88   2              {
+   89   3                  disp_flag = 0;
+   90   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
+   91   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
+   92   3                  OLED_BuffShow();
+   93   3              }
+   94   2          }
+   95   1      }
+   96          
    97          
-   98          
-   99          void UART1_ISR(void) interrupt 4
-  100          {
-  101   1          unsigned char dat;
-  102   1          if (RI)
-  103   1          {
-  104   2              RI = 0;
-  105   2              dat = SBUF;
-  106   2              // TODO: 添加调试命令解析
-  107   2          }
-  108   1          if (TI)
-  109   1          {
-  110   2              TI = 0;
-  111   2          }
-  112   1      }
-  113          
-  114          void UART2_ISR(void) interrupt 8
-  115          {
-  116   1          unsigned char next;
-  117   1      
-  118   1          /* 接收中断 */
-  119   1          if (S2CON & 0x01)               // S2RI
-  120   1          {
-  121   2              S2CON &= ~0x01;
-C251 COMPILER V5.60.0,  main                                                               14/03/26  22:34:14  PAGE 3   
+   98          void UART1_ISR(void) interrupt 4
+   99          {
+  100   1          unsigned char dat;
+  101   1          if (RI)
+  102   1          {
+  103   2              RI = 0;
+  104   2              dat = SBUF;
+  105   2              // TODO: 添加调试命令解析
+  106   2          }
+  107   1          if (TI)
+  108   1          {
+  109   2              TI = 0;
+  110   2          }
+  111   1      }
+  112          
+  113          void UART2_ISR(void) interrupt 8
+  114          {
+  115   1          unsigned char next;
+  116   1      
+  117   1          /* 接收中断 */
+  118   1          if (S2CON & 0x01)               // S2RI
+  119   1          {
+  120   2              S2CON &= ~0x01;
+  121   2      
+C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 3   
 
-  122   2      
-  123   2              /* [MODBUS] 直接交给 Modbus 接收状态机，不再存入通用缓冲区 */
-  124   2              Modbus_RxByte(S2BUF);
-  125   2      
-  126   2              /*
-  127   2               * 若你仍需保留通用 UART2 缓冲区（如调试），可同时保留下面的代码：
-  128   2               *
-  129   2               * next = (uart2_rx_head + 1) % UART2_BUF_SIZE;
-  130   2               * if (next != uart2_rx_tail)
-  131   2               * {
-  132   2               *     uart2_rx_buf[uart2_rx_head] = S2BUF;
-  133   2               *     uart2_rx_head = next;
-  134   2               * }
-  135   2               */
-  136   2          }
-  137   1      
-  138   1          /* 发送中断（保持原有缓冲区发送机制不变） */
-  139   1          if (S2CON & 0x02)               // S2TI
-  140   1          {
-  141   2              S2CON &= ~0x02;
-  142   2      
-  143   2              if (uart2_tx_head != uart2_tx_tail)
-  144   2              {
-  145   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
-  146   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-  147   3              }
-  148   2              else
-  149   2              {
-  150   3                  uart2_tx_busy = 0;
-  151   3              }
-  152   2          }
-  153   1      }
-*** WARNING C47 IN LINE 116 OF main.c: 'next': unreferenced local variable
-  154          
-  155          void Timer0_ISR(void) interrupt 1
-  156          {
-  157   1          ms_tick++;
-  158   1      
-  159   1          /* [MODBUS] 3.5字符超时检测 */
-  160   1          Modbus_TimerTick();
-  161   1      
-  162   1          /* 编码器采样（每10ms） */
-  163   1          if (ms_tick % 10 == 0)
-  164   1          {
-  165   2              g_enc_cnt = Encoder_Read();
-  166   2          }
-  167   1      
-  168   1          /* OLED 刷新（每200ms） */
-  169   1          if (ms_tick % 20 == 0)
-  170   1          {
-  171   2              disp_flag = 1;
-  172   2          }
-  173   1      
-  174   1          if (ms_tick >= 10000) ms_tick = 0;
-  175   1      }
+  122   2              /* [MODBUS] 直接交给 Modbus 接收状态机，不再存入通用缓冲区 */
+  123   2              Modbus_RxByte(S2BUF);
+  124   2      
+  125   2              /*
+  126   2               * 若你仍需保留通用 UART2 缓冲区（如调试），可同时保留下面的代码：
+  127   2               *
+  128   2               * next = (uart2_rx_head + 1) % UART2_BUF_SIZE;
+  129   2               * if (next != uart2_rx_tail)
+  130   2               * {
+  131   2               *     uart2_rx_buf[uart2_rx_head] = S2BUF;
+  132   2               *     uart2_rx_head = next;
+  133   2               * }
+  134   2               */
+  135   2          }
+  136   1      
+  137   1          /* 发送中断（保持原有缓冲区发送机制不变） */
+  138   1          if (S2CON & 0x02)               // S2TI
+  139   1          {
+  140   2              S2CON &= ~0x02;
+  141   2      
+  142   2              if (uart2_tx_head != uart2_tx_tail)
+  143   2              {
+  144   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
+  145   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+  146   3              }
+  147   2              else
+  148   2              {
+  149   3                  uart2_tx_busy = 0;
+  150   3              }
+  151   2          }
+  152   1      }
+*** WARNING C47 IN LINE 115 OF main.c: 'next': unreferenced local variable
+  153          
+  154          void Timer0_ISR(void) interrupt 1
+  155          {
+  156   1          ms_tick++;
+  157   1      
+  158   1          /* [MODBUS] 3.5字符超时检测 */
+  159   1          Modbus_TimerTick();
+  160   1      
+  161   1          /* 编码器采样（每10ms） */
+  162   1          if (ms_tick % 10 == 0)
+  163   1          {
+  164   2              g_enc_cnt = Encoder_Read();
+  165   2          }
+  166   1      
+  167   1          /* OLED 刷新（每200ms） */
+  168   1          if (ms_tick % 20 == 0)
+  169   1          {
+  170   2              disp_flag = 1;
+  171   2          }
+  172   1      
+  173   1          if (ms_tick >= 10000) ms_tick = 0;
+  174   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      3614     ------
+  code size            =      3603     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -203,16 +202,16 @@ Module Information          Static   Overlayable
   xdata size           =    ------     ------
   xdata-const size     =    ------     ------
   edata size           =         6     ------
-C251 COMPILER V5.60.0,  main                                                               14/03/26  22:34:14  PAGE 4   
-
   bit size             =         2     ------
+C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 4   
+
   ebit size            =    ------     ------
   bitaddressable size  =    ------     ------
   ebitaddressable size =    ------     ------
   far data size        =    ------     ------
   huge data size       =    ------     ------
   const size           =    ------     ------
-  hconst size          =        51     ------
+  hconst size          =        35     ------
 End of Module Information.
 
 
