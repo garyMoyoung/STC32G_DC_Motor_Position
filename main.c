@@ -34,6 +34,7 @@
 #include "timer.h"
 #include "rs485.h"
 #include "key.h"
+#include "pid.h"
 
 /*=============================================================================
  * 编码器参数（根据硬件确定，修改此处即可）
@@ -88,6 +89,46 @@ static int g_enc_last = 0;          /* 速度计算：上次采样值 */
 sbit TOG = P0^4;
 
 /*=============================================================================
+ * PID 控制器实例
+ *
+ * 速度环（Speed PID）：
+ *   控制周期 = 10ms（编码器采样周期）
+ *   输入  = g_set_speed（rpm）vs g_motor_speed（rpm）
+ *   输出  = PWM 占空比（0 ~ PWM_ARR = 1658）
+ *   初始参数（需根据实际电机调试）：
+ *     Kp=200（×100=2.00），Ki=5（×100=0.05），Kd=0（暂不加微分）
+ *
+ * 位置环（Angle PID）：
+ *   控制周期 = 10ms
+ *   输入  = g_set_angle（0.1°）vs g_motor_angle（0.1°）
+ *   输出  = 目标速度限幅至 ±MAX_SPEED_FOR_ANGLE（rpm）
+ *   初始参数：Kp=80（×100=0.80），Ki=2（×100=0.02），Kd=10（×100=0.10）
+ *
+ * ── 调参说明 ──────────────────────────────────────────────────────────────
+ * 1. 先单独调速度环（角度模式关闭，手动给定转速）：
+ *    逐步增大 Kp 直到响应变快但不震荡，再加小 Ki 消除稳态误差
+ * 2. 速度环稳定后再调位置环：
+ *    逐步增大位置环 Kp，加 Kd 抑制超调
+ * 3. 参数调整：修改 PID_SPEED_KP/KI/KD 和 PID_ANGLE_KP/KI/KD 宏即可
+ *===========================================================================*/
+
+/* 速度环参数（实际值×100） */
+#define PID_SPEED_KP    200     /* Kp = 2.00 */
+#define PID_SPEED_KI    5       /* Ki = 0.05 */
+#define PID_SPEED_KD    0       /* Kd = 0.00 */
+
+/* 位置环参数（实际值×100） */
+#define PID_ANGLE_KP    80      /* Kp = 0.80 */
+#define PID_ANGLE_KI    2       /* Ki = 0.02 */
+#define PID_ANGLE_KD    10      /* Kd = 0.10 */
+
+/* 位置环输出限幅（最大目标速度，rpm） */
+#define MAX_SPEED_FOR_ANGLE   80
+
+static PID_t g_pid_speed;       /* 速度环 PID 实例 */
+static PID_t g_pid_angle;       /* 位置环 PID 实例 */
+
+/*=============================================================================
  * Modbus_SyncRegs
  * 主循环每轮调用一次：
  *   - 把最新运行状态刷新到只读寄存器
@@ -124,62 +165,129 @@ static void Modbus_SyncRegs(void)
 
 /*=============================================================================
  * Motor_ControlUpdate
- * 根据 g_ctrl_mode 执行对应的输出逻辑
- * TODO：把速度/角度环 PID 替换到对应位置
+ * 每10ms在Timer0_ISR编码器采样后调用一次（控制周期与采样周期一致）
+ *
+ * 模式0 速度模式：速度单环PID
+ *   g_set_speed → 速度PID → PWM占空比
+ *
+ * 模式1 角度模式：位置环+速度环串级PID
+ *   g_set_angle → 位置PID → 目标速度 → 速度PID → PWM占空比
+ *
+ * 模式2 手动模式：直接写PWM_Duty_Raw寄存器
  *===========================================================================*/
 static void Motor_ControlUpdate(void)
 {
+    long  pwm_out;
+    int   speed_setpoint;
     unsigned int pwm_duty;
 
-    /* Motor_Enable 线圈（bit0）：未使能时强制停机 */
+    /* Motor_Enable 线圈（bit0）：未使能时强制停机并复位PID */
     if (!(modbus_coils & (1 << 0)))
     {
         PWM_SetDuty(0);
+        PID_Reset(&g_pid_speed);
+        PID_Reset(&g_pid_angle);
         return;
     }
 
     switch (g_ctrl_mode)
     {
-        /* ── 速度模式 ── */
+        /* ── 模式0：速度单环 ── */
         case 0:
             /*
-             * TODO：将 g_set_speed 送入速度环PID，输出 PWM 占空比
-             * 当前为线性折算示例（1000 rpm → 满占空比）
+             * 速度PID：
+             *   输入：目标rpm vs 当前rpm
+             *   输出：PWM占空比（0 ~ PWM_ARR）
+             * 注意：g_set_speed 为有符号，负值表示反转
+             *   正转：g_set_speed > 0，Dir=正转
+             *   反转：g_set_speed < 0，Dir=反转，取绝对值送PID
              */
-            if (g_set_speed < 0)
+            if (g_set_speed >= 0)
             {
-                modbus_coils |=  (1 << 1);              /* Dir = 反转 */
-                pwm_duty = (unsigned int)(-g_set_speed) * PWM_ARR / 1000;
+                modbus_coils &= ~(1 << 1);                  /* Dir = 正转 */
+                pwm_out = PID_Calc(&g_pid_speed,
+                                   g_set_speed,
+                                   g_motor_speed);
             }
             else
             {
-                modbus_coils &= ~(1 << 1);              /* Dir = 正转 */
-                pwm_duty = (unsigned int)( g_set_speed) * PWM_ARR / 1000;
+                modbus_coils |= (1 << 1);                   /* Dir = 反转 */
+                pwm_out = PID_Calc(&g_pid_speed,
+                                   -g_set_speed,
+                                   (g_motor_speed < 0 ? -g_motor_speed : g_motor_speed));
             }
+
+            /* 目标为0时主动停机并复位积分 */
+            if (g_set_speed == 0)
+            {
+                PWM_SetDuty(0);
+                PID_Reset(&g_pid_speed);
+                break;
+            }
+
+            pwm_duty = (unsigned int)pwm_out;
             if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
             PWM_SetDuty(pwm_duty);
             break;
 
-        /* ── 角度模式 ── */
+        /* ── 模式1：位置串级（位置环 → 速度环） ── */
         case 1:
             /*
-             * TODO：将 g_set_angle 和 g_motor_angle 差值送入位置环PID
-             * 当前只做到位判断示例
+             * 第一级：位置环PID
+             *   输入：目标角度(0.1°) vs 当前角度(0.1°)
+             *   输出：目标速度（rpm），限幅 ±MAX_SPEED_FOR_ANGLE
+             *
+             * 第二级：速度环PID
+             *   输入：位置环输出速度 vs 当前速度
+             *   输出：PWM占空比
              */
-            if (g_motor_angle == g_set_angle)
+
+            /* 位置环 */
+            speed_setpoint = (int)PID_Calc(&g_pid_angle,
+                                           g_set_angle,
+                                           g_motor_angle);
+
+            /* 到位判断：误差在±5（0.5°）内认为到位 */
             {
-                g_status_flags |=  (1 << 0);            /* bit0 到位 */
-                PWM_SetDuty(0);
+                int angle_err = g_set_angle - g_motor_angle;
+                if (angle_err < 0) angle_err = -angle_err;
+                if (angle_err <= 5)
+                {
+                    g_status_flags |= (1 << 0);             /* bit0 到位 */
+                    PWM_SetDuty(0);
+                    PID_Reset(&g_pid_speed);
+                    /* 位置环保持积分，不复位，防止外力扰动后漂移 */
+                    break;
+                }
+                else
+                {
+                    g_status_flags &= ~(1 << 0);
+                }
             }
+
+            /* 根据速度环目标方向控制 Dir 线圈 */
+            if (speed_setpoint >= 0)
+                modbus_coils &= ~(1 << 1);                  /* Dir = 正转 */
             else
             {
-                g_status_flags &= ~(1 << 0);
-                /* TODO: PID 输出到 PWM_SetDuty() */
+                modbus_coils |= (1 << 1);                   /* Dir = 反转 */
+                speed_setpoint = -speed_setpoint;
             }
+
+            /* 速度环 */
+            pwm_out = PID_Calc(&g_pid_speed,
+                               speed_setpoint,
+                               (g_motor_speed < 0 ? -g_motor_speed : g_motor_speed));
+
+            pwm_duty = (unsigned int)pwm_out;
+            if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
+            PWM_SetDuty(pwm_duty);
             break;
 
-        /* ── 手动模式：直接用 PWM_Duty_Raw（0x0008） ── */
+        /* ── 模式2：手动，直接写 PWM_Duty_Raw（0x0008） ── */
         case 2:
+            PID_Reset(&g_pid_speed);
+            PID_Reset(&g_pid_angle);
             pwm_duty = modbus_regs[8];
             if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
             PWM_SetDuty(pwm_duty);
@@ -187,6 +295,8 @@ static void Motor_ControlUpdate(void)
 
         default:
             PWM_SetDuty(0);
+            PID_Reset(&g_pid_speed);
+            PID_Reset(&g_pid_angle);
             break;
     }
 
@@ -246,6 +356,19 @@ void main(void)
     Modbus_Init();          /* 在 UART2_Init 之后调用 */
     PWM_SetDuty(0);         /* 上电先停机 */
 
+    /* PID 控制器初始化 */
+    PID_Init(&g_pid_speed,
+             PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD,
+             PWM_ARR,   /* 输出上限 = 最大PWM占空比 */
+             0,         /* 输出下限 = 0（方向由线圈控制） */
+             2);        /* 死区 = 2rpm */
+
+    PID_Init(&g_pid_angle,
+             PID_ANGLE_KP, PID_ANGLE_KI, PID_ANGLE_KD,
+             MAX_SPEED_FOR_ANGLE,   /* 输出上限（rpm） */
+             -MAX_SPEED_FOR_ANGLE,  /* 输出下限（rpm） */
+             5);        /* 死区 = 5（对应0.5°） */
+
     /* 可写寄存器初始值 */
     modbus_regs[4] = 0;     /* Set_Speed  = 0 rpm  */
     modbus_regs[5] = 0;     /* Set_Angle  = 0°     */
@@ -271,10 +394,7 @@ void main(void)
         /* 2. Modbus 轮询（处理已收到的完整帧） */
         Modbus_Poll();
 
-        /* 3. 电机控制输出 */
-        Motor_ControlUpdate();
-
-        /* 4. 按键处理 */
+        /* 3. 按键处理 */
         Key_HandleEvent();
 
         /* 5. OLED 刷新（每20ms由 Timer0 置 disp_flag） */
@@ -287,15 +407,14 @@ void main(void)
             OLED_BuffShowNum(32, 2, (long)(g_motor_angle / 10), 0);
 
             OLED_BuffShow();
-        }
-        {
-            Printf("Angle: Speed: Enc: flag: %d.%d°, %d, %ld, %d\n",
-                   g_motor_angle / 10,      /* 角度整数部分 */
+
+            /* 调试输出随 OLED 刷新节奏（20ms一次），不在主循环每轮打印 */
+            Printf("Angle: Spd: Enc: Flg:%d.%d°, %d, %ld, %d\n",
+                   g_motor_angle / 10,                              /* 角度整数部分 */
                    (g_motor_angle % 10 >= 0) ? (g_motor_angle % 10) : (-(g_motor_angle % 10)),  /* 角度小数部分绝对值 */
-                   g_motor_speed,           /* 转速(rpm) */
-                   g_enc_total,             /* 编码器计数 */
-                   g_status_flags);         /* 状态标志 */
-        
+                   g_motor_speed,
+                   g_enc_total,
+                   g_status_flags);
         }
     }
 }
@@ -391,6 +510,9 @@ void Timer0_ISR(void) interrupt 1
             if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
             g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
         }
+
+        /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
+        Motor_ControlUpdate();
     }
 
     /* OLED 刷新标志（每20ms） */

@@ -303,9 +303,9 @@ void Modbus_RxByte(unsigned char dat)
 
     if (rx_len < MODBUS_BUF_SIZE)
         rx_buf[rx_len++] = dat;
-    Printf("RX[%d]: 0x%02X\r\n", rx_len-1, dat);  
 
     /* 溢出时直接丢弃，等超时后清空 */
+    /* 注意：此函数在 UART2_ISR 中调用，禁止在此处使用 Printf 等阻塞输出 */
 }
 
 /*-----------------------------------------------------------------------------

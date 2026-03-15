@@ -106,9 +106,11 @@ void UART1_SendStr(unsigned char *str)
 
 void UART2_SendByte(unsigned char dat)
 {
-    /* 等待缓冲区有空位 */
     unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
-    while (next == uart2_tx_tail);      // 缓冲区满则等待
+
+    /* 缓冲区满时直接丢弃，绝不阻塞（防止主循环/中断卡死） */
+    if (next == uart2_tx_tail)
+        return;
 
     uart2_tx_buf[uart2_tx_head] = dat;
     uart2_tx_head = next;
@@ -154,5 +156,3 @@ void Printf(const char *fmt, ...)
     
     UART1_SendStr((unsigned char *)buf);
 }
-
-

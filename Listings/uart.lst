@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 1   
+C251 COMPILER V5.60.0,  uart                                                               15/03/26  14:33:31  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE uart
@@ -66,7 +66,7 @@ stmt  level    source
    56          
    57          
    58          void UART2_Init(void)
-C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 2   
+C251 COMPILER V5.60.0,  uart                                                               15/03/26  14:33:31  PAGE 2   
 
    59          {
    60   1          // 配置 P4.6 为 RXD2（输入），P4.7 为 TXD2（推挽输出）
@@ -118,63 +118,63 @@ stmt  level    source
   106          
   107          void UART2_SendByte(unsigned char dat)
   108          {
-  109   1          /* 等待缓冲区有空位 */
-  110   1          unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
-  111   1          while (next == uart2_tx_tail);      // 缓冲区满则等待
-  112   1      
-  113   1          uart2_tx_buf[uart2_tx_head] = dat;
-  114   1          uart2_tx_head = next;
-  115   1      
-  116   1          /* 若发送空闲则立即启动 */
-  117   1          if (!uart2_tx_busy)
-  118   1          {
-  119   2              uart2_tx_busy = 1;
-  120   2              S2BUF = uart2_tx_buf[uart2_tx_tail];
-  121   2              uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-  122   2          }
-  123   1      }
-  124          
-C251 COMPILER V5.60.0,  uart                                                               14/03/26  22:33:21  PAGE 3   
+  109   1          unsigned char next = (uart2_tx_head + 1) % UART2_BUF_SIZE;
+  110   1      
+  111   1          /* 缓冲区满时直接丢弃，绝不阻塞（防止主循环/中断卡死） */
+  112   1          if (next == uart2_tx_tail)
+  113   1              return;
+  114   1      
+  115   1          uart2_tx_buf[uart2_tx_head] = dat;
+  116   1          uart2_tx_head = next;
+  117   1      
+  118   1          /* 若发送空闲则立即启动 */
+  119   1          if (!uart2_tx_busy)
+  120   1          {
+  121   2              uart2_tx_busy = 1;
+  122   2              S2BUF = uart2_tx_buf[uart2_tx_tail];
+  123   2              uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+  124   2          }
+C251 COMPILER V5.60.0,  uart                                                               15/03/26  14:33:31  PAGE 3   
 
-  125          void UART2_SendString(unsigned char *str)
-  126          {
-  127   1          while (*str)
-  128   1              UART2_SendByte(*str++);
-  129   1      }
-  130          
-  131          /*------------------------------------------------------------------------------
-  132           * 读取接收缓冲区（返回0表示缓冲区空）
-  133           *----------------------------------------------------------------------------*/
-  134          bit UART2_ReadByte(unsigned char *dat)
-  135          {
-  136   1          if (uart2_rx_head == uart2_rx_tail)
-  137   1              return 0;                       // 缓冲区空
-  138   1      
-  139   1          *dat = uart2_rx_buf[uart2_rx_tail];
-  140   1          uart2_rx_tail = (uart2_rx_tail + 1) % UART2_BUF_SIZE;
-  141   1          return 1;
-  142   1      }
-  143          
-  144          
-  145          void Printf(const char *fmt, ...)
-  146          {
-  147   1          char buf[100];  // 缓冲区，根据需要调整大小
-  148   1          va_list args;
-  149   1          int len;
-  150   1          
-  151   1          va_start(args, fmt);
-  152   1          len = vsprintf(buf, fmt, args);
-  153   1          va_end(args);
-  154   1          
-  155   1          UART1_SendStr((unsigned char *)buf);
-  156   1      }
-  157          
-  158          
+  125   1      }
+  126          
+  127          void UART2_SendString(unsigned char *str)
+  128          {
+  129   1          while (*str)
+  130   1              UART2_SendByte(*str++);
+  131   1      }
+  132          
+  133          /*------------------------------------------------------------------------------
+  134           * 读取接收缓冲区（返回0表示缓冲区空）
+  135           *----------------------------------------------------------------------------*/
+  136          bit UART2_ReadByte(unsigned char *dat)
+  137          {
+  138   1          if (uart2_rx_head == uart2_rx_tail)
+  139   1              return 0;                       // 缓冲区空
+  140   1      
+  141   1          *dat = uart2_rx_buf[uart2_rx_tail];
+  142   1          uart2_rx_tail = (uart2_rx_tail + 1) % UART2_BUF_SIZE;
+  143   1          return 1;
+  144   1      }
+  145          
+  146          
+  147          void Printf(const char *fmt, ...)
+  148          {
+  149   1          char buf[100];  // 缓冲区，根据需要调整大小
+  150   1          va_list args;
+  151   1          int len;
+  152   1          
+  153   1          va_start(args, fmt);
+  154   1          len = vsprintf(buf, fmt, args);
+  155   1          va_end(args);
+  156   1          
+  157   1          UART1_SendStr((unsigned char *)buf);
+  158   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =       278     ------
+  code size            =       274     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
