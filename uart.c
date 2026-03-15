@@ -58,6 +58,7 @@ void UART1_Init(void)
 void UART2_Init(void)
 {
     // 配置 P4.6 为 RXD2（输入），P4.7 为 TXD2（推挽输出）
+    // 波特率由 main.h 中 UART2_BAUD 决定，当前 = 115200bps
     P4M0 |=  0x80;              // P4.7 推挽输出
     P4M1 &= ~0x80;
     P4M0 &= ~0x40;              // P4.6 准双向（输入）

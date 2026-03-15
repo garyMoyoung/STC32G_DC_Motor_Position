@@ -7,9 +7,9 @@
 #define UART1_BAUD      115200
 #define UART1_RELOAD    (65536 - FOSC / 4 / UART1_BAUD)
 
-#define UART2_BAUD      9600
+#define UART2_BAUD      115200
 
-#define UART2_RELOAD    (65536 - FOSC / 4 / UART2_BAUD)    // = 646720%
+#define UART2_RELOAD    (65536 - FOSC / 4 / UART2_BAUD)    // = 65464 (0xFFB8)
 
 
 #define PWM_FREQ        20000

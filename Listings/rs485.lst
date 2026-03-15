@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 1   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE rs485
@@ -66,7 +66,7 @@ stmt  level    source
    56   1          return crc;
    57   1      }
    58          
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 2   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 2   
 
    59          /*=============================================================================
    60           * 发送回复帧（含CRC，发送完毕后切回接收模式）
@@ -134,7 +134,7 @@ stmt  level    source
   121   1          {
   122   2              /*--------------------------------------------------------------------
   123   2               * FC=0x01  Read Coils
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 3   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 3   
 
   124   2               * 请求帧：[地址][01][起始高][起始低][数量高][数量低][CRC-L][CRC-H]
   125   2               * 响应帧：[地址][01][字节数][数据…][CRC-L][CRC-H]
@@ -202,7 +202,7 @@ stmt  level    source
   185   2                  if (coil_val)
   186   2                      modbus_coils |=  (1 << start_addr);
   187   2                  else
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 4   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 4   
 
   188   2                      modbus_coils &= ~(1 << start_addr);
   189   2      
@@ -270,7 +270,7 @@ stmt  level    source
   250   2                  tx_buf[5] = rx_buf[5];
   251   2                  SendResponse(6);
   252   2                  break;
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 5   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 5   
 
   253   2      
   254   2              /*--------------------------------------------------------------------
@@ -338,7 +338,7 @@ stmt  level    source
   316   1          if (!rx_done)
   317   1              return;
   318   1      
-C251 COMPILER V5.60.0,  rs485                                                              15/03/26  14:33:31  PAGE 6   
+C251 COMPILER V5.60.0,  rs485                                                              15/03/26  15:30:08  PAGE 6   
 
   319   1          rx_done = 0;
   320   1          ProcessFrame();
