@@ -374,6 +374,21 @@
               <FileType>5</FileType>
               <FilePath>.\rs485.h</FilePath>
             </File>
+            <File>
+              <FileName>isr.asm</FileName>
+              <FileType>2</FileType>
+              <FilePath>.\isr.asm</FilePath>
+            </File>
+            <File>
+              <FileName>key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\key.c</FilePath>
+            </File>
+            <File>
+              <FileName>key.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\key.h</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>

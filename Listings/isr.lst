@@ -1,0 +1,31 @@
+A251 MACRO ASSEMBLER  isr                                                                   15/03/26 12:59:23 PAGE     1
+
+
+MACRO ASSEMBLER A251 V4.69.13.0
+OBJECT MODULE PLACED IN .\Objects\isr.obj
+ASSEMBLER INVOKED BY: D:\Keil MDK\C251\BIN\A251.EXE isr.asm MODSRC INTR2 SET(XSMALL) DEBUG PRINT(.\Listings\isr.lst) OBJ
+                      ECT(.\Objects\isr.obj) EP
+
+LOC    OBJ             LINE     SOURCE
+
+                          1     ; isr.asm - SPI DMA 中断向量跳转
+                          2     ; SPI DMA 真实中断号=49，向量=018BH
+                          3     ; interrupt 13 的向量=006BH
+                          4     ; 硬件触发018BH → 跳到006BH → 执行 interrupt 13 函数
+00018B                    5         CSEG AT 018BH
+00018B 02006B             6         LJMP 006BH
+                          7         END
+A251 MACRO ASSEMBLER  isr                                                                   15/03/26 12:59:23 PAGE     2
+
+SYMBOL TABLE LISTING
+------ ----- -------
+
+
+N A MT Y P E  V A L U E     ATTRIBUTES
+
+
+
+REGISTER BANK(S) USED: 
+
+
+ASSEMBLY COMPLETE.  0 WARNING(S), 0 ERROR(S).

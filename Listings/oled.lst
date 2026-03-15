@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 1   
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE oled
@@ -8,1250 +8,388 @@ COMPILER INVOKED BY: D:\Keil MDK\C251\BIN\C251.EXE oled.c XSMALL INTR2 BROWSE DE
 
 stmt  level    source
 
-    1          #include "oled.h"
-*** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
-*** WARNING C323 IN LINE 16 OF spi.h: newline expected, extra characters found
-    2          
-    3          #include "font.h"
+    1          /*==============================================================================
+    2           * oled.c  —  OLED 驱动（适配新 SPI DMA 接口）
+    3           *
+    4           * 接口变化：
+    5           *   SPI_WriteByte()  →  发单字节命令（不变）
+    6           *   SPI_Transmit()   →  发多字节数据（DMA或阻塞自动切换）
+    7           *   SPI_DMA_Wait()   →  等待DMA完成后再拉CS
+    8           *
+    9           * 其余显示函数（ShowChar/ShowString/ShowNum等）完全不变
+   10           *============================================================================*/
+   11          
+   12          #include "oled.h"
+   13          #include "font.h"
 *** WARNING C323 IN LINE 1 OF font.h: newline expected, extra characters found
 *** WARNING C323 IN LINE 268 OF font.h: newline expected, extra characters found
-    4          
-    5          #include "spi.h"
-*** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
-    6          
-    7          #include <STDIO.H>
-    8          
-    9          #include <STC32G.H>
-   10          
-   11          #include <STRING.H>
-   12          
-   13          
-   14          
-   15          unsigned char xdata ShowBUFF[8][128];                           //OLEDȫ�ֻ���
-   16          
-   17          
-   18          
-   19          //========================================================================
-   20          
-   21          // ��������: delay
-   22          
-   23          // ��������: OLED�����õ���ʱ
+   14          #include "spi.h"
+   15          #include <STDIO.H>
+   16          #include <STC32G.H>
+   17          #include <STRING.H>
+   18          #include <intrins.h>
+   19          
+   20          /*=============================================================================
+   21           * 全局显示缓冲区（必须在 xdata 区，DMA 只能访问片内 xdata RAM）
+   22           *===========================================================================*/
+   23          unsigned char xdata ShowBUFF[8][128];
    24          
-   25          // ��ڲ���: ��
-   26          
-   27          // ��������: ��
-   28          
-   29          // ��ǰ�汾: VER1.0
-   30          
-   31          // �޸�����: 2023 - 6 - 7
-   32          
-   33          // ��ǰ����: ZCF
-   34          
-   35          // ������ע:
-   36          
-   37          //========================================================================
-   38          
-   39          void delay(void)
-   40          
-   41          {
-   42   1      
-   43   1          int xdata i;
-   44   1      
-   45   1          
-   46   1      
-   47   1          for (i=0; i<100; i++);
-   48   1      
-   49   1      }
-   50          
-   51          
-   52          
-   53          //========================================================================
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 2   
+   25          /*=============================================================================
+   26           * 内部延时
+   27           *===========================================================================*/
+   28          static void delay(void)
+   29          {
+   30   1          int xdata i;
+   31   1          for (i = 0; i < 100; i++);
+   32   1      }
+   33          
+   34          void delay_ms(unsigned int ms)
+   35          {
+   36   1          unsigned int xdata i;
+   37   1          do {
+   38   2              i = MAIN_Fosc / 6000;
+   39   2              while (--i);
+   40   2          } while (--ms);
+   41   1      }
+   42          
+   43          /*=============================================================================
+   44           * 单字节写入（命令/数据）
+   45           * 命令：DC=0，阻塞SPI发送
+   46           * 数据：DC=1，阻塞SPI发送（单字节场合，如DrawBMP逐点）
+   47           *===========================================================================*/
+   48          void OLED_WR_Byte(unsigned char dat, unsigned char cmd)
+   49          {
+   50   1          if (cmd)
+   51   1              OLED_DC = 1;
+   52   1          else
+   53   1              OLED_DC = 0;
+   54   1      
+   55   1          OLED_CS = 0;
+   56   1          SPI_WriteByte(dat);
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 2   
 
-   54          
-   55          // ��������: delay_ms
-   56          
-   57          // ��������: ms��ʱ����
-   58          
-   59          // ��ڲ���: ��
-   60          
-   61          // ��������: ��
-   62          
-   63          // ��ǰ�汾: VER1.0
-   64          
-   65          // �޸�����: 2023 - 6 - 7
-   66          
-   67          // ��ǰ����: ZCF
-   68          
-   69          // ������ע:
-   70          
-   71          //========================================================================
-   72          
-   73          void delay_ms(unsigned int ms)
-   74          
-   75          {
-   76   1      
-   77   1           unsigned int xdata i;
-   78   1      
-   79   1           do{
-   80   2      
-   81   2                i = MAIN_Fosc / 6000;
-   82   2      
-   83   2                while(--i);   //6T per loop
-   84   2      
-   85   2           }while(--ms);
-   86   1      
-   87   1      }
-   88          
-   89          
-   90          
-   91          //========================================================================
-   92          
-   93          // ��������: OLED_WR_Byte
-   94          
-   95          // ��������: OLED��ַ/����д�뺯��
-   96          
-   97          // ��ڲ���: @dat:����    @cmd:����
-   98          
-   99          // ��������: ��
-  100          
-  101          // ��ǰ�汾: VER1.0
-  102          
-  103          // �޸�����: 2023 - 6 - 7
-  104          
-  105          // ��ǰ����: ZCF
+   57   1          delay();
+   58   1          OLED_CS = 1;
+   59   1          OLED_DC = 1;
+   60   1      }
+   61          
+   62          /*=============================================================================
+   63           * OLED 初始化（保持原版不变）
+   64           *===========================================================================*/
+   65          void OLED_Init(void)
+   66          {
+   67   1          SPI_Init();
+   68   1          delay_ms(100);
+   69   1          OLED_REST = 1;
+   70   1          delay_ms(200);
+   71   1          OLED_REST = 0;
+   72   1          delay_ms(200);
+   73   1          OLED_REST = 1;
+   74   1      
+   75   1          OLED_WR_Byte(0xAE, OLED_CMD);
+   76   1          OLED_WR_Byte(0x00, OLED_CMD);
+   77   1          OLED_WR_Byte(0x10, OLED_CMD);
+   78   1          OLED_WR_Byte(0x40, OLED_CMD);
+   79   1          OLED_WR_Byte(0x81, OLED_CMD);
+   80   1          OLED_WR_Byte(0xCF, OLED_CMD);
+   81   1          OLED_WR_Byte(0xA1, OLED_CMD);
+   82   1          OLED_WR_Byte(0xC8, OLED_CMD);
+   83   1          OLED_WR_Byte(0xA6, OLED_CMD);
+   84   1          OLED_WR_Byte(0xA8, OLED_CMD);
+   85   1          OLED_WR_Byte(0x3f, OLED_CMD);
+   86   1          OLED_WR_Byte(0xD3, OLED_CMD);
+   87   1          OLED_WR_Byte(0x00, OLED_CMD);
+   88   1          OLED_WR_Byte(0xd5, OLED_CMD);
+   89   1          OLED_WR_Byte(0x80, OLED_CMD);
+   90   1          OLED_WR_Byte(0xD9, OLED_CMD);
+   91   1          OLED_WR_Byte(0xF1, OLED_CMD);
+   92   1          OLED_WR_Byte(0xDA, OLED_CMD);
+   93   1          OLED_WR_Byte(0x12, OLED_CMD);
+   94   1          OLED_WR_Byte(0xDB, OLED_CMD);
+   95   1          OLED_WR_Byte(0x40, OLED_CMD);
+   96   1          OLED_WR_Byte(0x20, OLED_CMD);
+   97   1          OLED_WR_Byte(0x00, OLED_CMD);
+   98   1          OLED_WR_Byte(0x8D, OLED_CMD);
+   99   1          OLED_WR_Byte(0x14, OLED_CMD);
+  100   1          OLED_WR_Byte(0xA4, OLED_CMD);
+  101   1          OLED_WR_Byte(0xA6, OLED_CMD);
+  102   1          OLED_WR_Byte(0xAF, OLED_CMD);
+  103   1      
+  104   1          OLED_DisplayOn();
+  105   1      }
   106          
-  107          // ������ע:
-  108          
-  109          //========================================================================
-  110          
-  111          void OLED_WR_Byte(unsigned char dat,unsigned char cmd)
-  112          
-  113          {
-  114   1      
-  115   1          unsigned char udat[1] ;
-  116   1      
-  117   1          udat[0] = dat;
-  118   1      
-  119   1          if(cmd)
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 3   
+  107          /*=============================================================================
+  108           * 设置显示位置
+  109           *===========================================================================*/
+  110          void OLED_Set_Pos(unsigned char x, unsigned char y)
+  111          {
+  112   1          OLED_WR_Byte((unsigned char)(0xb0 + y), OLED_CMD);
+  113   1          OLED_WR_Byte(((x & 0xf0) >> 4) | 0x10, OLED_CMD);
+  114   1          OLED_WR_Byte((x & 0x0f) | 0x01, OLED_CMD);
+  115   1      }
+  116          
+  117          /*=============================================================================
+  118           * OLED_BuffShow —— 缓冲区刷屏
+  119           *
+  120           * 流程（每行）：
+  121           *   1. 发3字节页地址命令（阻塞SPI）
+  122           *   2. 等待上次DMA完成（SPI_DMA_Wait）
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 3   
 
-  120   1      
-  121   1          {
-  122   2      
-  123   2              OLED_DC = 1;
-  124   2      
-  125   2          }
-  126   1      
-  127   1          else
-  128   1      
-  129   1          {
-  130   2      
-  131   2              OLED_DC = 0;
-  132   2      
-  133   2          }
-  134   1      
-  135   1          OLED_CS = 0;
-  136   1      
-  137   1          SPI_WriteByte(dat);
-  138   1      
-  139   1          delay();
-  140   1      
-  141   1          OLED_CS = 1;
-  142   1      
-  143   1          OLED_DC = 1;
-  144   1      
-  145   1      }
-  146          
-  147          
-  148          
-  149          //========================================================================
-  150          
-  151          // ��������: OLED_Init
-  152          
-  153          // ��������: OLED��ʼ������
-  154          
-  155          // ��ڲ���: ��
-  156          
-  157          // ��������: ��
-  158          
-  159          // ��ǰ�汾: VER1.0
-  160          
-  161          // �޸�����: 2023 - 6 - 7
-  162          
-  163          // ��ǰ����: ZCF
-  164          
-  165          // ������ע:
-  166          
-  167          //========================================================================
-  168          
-  169          void OLED_Init(void)
-  170          
-  171          {
-  172   1      
-  173   1          SPI_init();
-*** WARNING C140 IN LINE 173 OF oled.c: 'SPI_init' undefined; assuming 'extern int SPI_init()'
-  174   1      
-  175   1          delay_ms(100);
-  176   1      
-  177   1          OLED_REST = 1;
-  178   1      
-  179   1          delay_ms(200);
-  180   1      
-  181   1          OLED_REST=0;//��λ
-  182   1      
-  183   1          delay_ms(200);
-  184   1      
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 4   
+  123           *   3. DC=DATA，CS拉低
+  124           *   4. SPI_Transmit 触发DMA发送128字节
+  125           *   5. SPI_DMA_Wait 等本行发完
+  126           *   6. CS拉高
+  127           *
+  128           * 关于第一行色块问题的修复：
+  129           *   - 发完命令后 CS先拉高再等 4个nop，保证SPI内部状态复位
+  130           *   - DC切换后等 2个nop 再拉低CS，保证OLED采样到正确的DC
+  131           *   - SPI_Transmit内部 while(SpiDmaFlag) 确保SPI完全空闲后再触发
+  132           *===========================================================================*/
+  133          void OLED_BuffShow(void)
+  134          {
+  135   1          unsigned char i;
+  136   1          unsigned char xdata *row;
+  137   1      
+  138   1          for (i = 0; i < 8; i++)
+  139   1          {
+  140   2              row = (unsigned char xdata *)ShowBUFF + (unsigned int)i * 128;
+  141   2      
+  142   2              OLED_DC = 0;
+  143   2              OLED_CS = 0;
+  144   2              SPI_WriteByte(0xb0 + i);
+*** WARNING C188 IN LINE 144 OF oled.c: 'parameter 1': value truncated
+  145   2              SPI_WriteByte(0x00);
+  146   2              SPI_WriteByte(0x10);
+  147   2              OLED_CS = 1;
+  148   2      
+  149   2              OLED_DC = 1;
+  150   2              _nop_(); _nop_();
+  151   2              OLED_CS = 0;
+  152   2      
+  153   2              SPI_Transmit(row, 128);
+  154   2              SPI_DMA_Wait();
+  155   2      
+  156   2              OLED_CS = 1;
+  157   2          }
+  158   1      }
+  159          
+  160          /*=============================================================================
+  161           * 其余函数与原版完全相同
+  162           *===========================================================================*/
+  163          
+  164          void OLED_BuffClear(void)
+  165          {
+  166   1          unsigned char xdata *p = (unsigned char xdata *)ShowBUFF;
+  167   1          unsigned int n;
+  168   1          for (n = 0; n < 8 * 128; n++)
+  169   1              p[n] = 0x00;
+  170   1      }
+  171          
+  172          void OLED_DisplayOn(void)
+  173          {
+  174   1          OLED_WR_Byte(0x8D, OLED_CMD);
+  175   1          OLED_WR_Byte(0x14, OLED_CMD);
+  176   1          OLED_WR_Byte(0xAF, OLED_CMD);
+  177   1      }
+  178          
+  179          void OLED_DisplayOff(void)
+  180          {
+  181   1          OLED_WR_Byte(0x8D, OLED_CMD);
+  182   1          OLED_WR_Byte(0x10, OLED_CMD);
+  183   1          OLED_WR_Byte(0xAF, OLED_CMD);
+  184   1      }
+  185          
+  186          void OLED_DrawBMP(unsigned char x0, unsigned char y0,
+  187                            unsigned char x1, unsigned char y1, unsigned char BMP[])
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 4   
 
-  185   1          OLED_REST = 1;
-  186   1      
-  187   1      
-  188   1      
-  189   1          OLED_WR_Byte(0xAE,OLED_CMD);//--turn off oled panel
-  190   1      
-  191   1          OLED_WR_Byte(0x00,OLED_CMD);//---set low column address
-  192   1      
-  193   1          OLED_WR_Byte(0x10,OLED_CMD);//---set high column address
-  194   1      
-  195   1          OLED_WR_Byte(0x40,OLED_CMD);//--set start line address  Set Mapping RAM Display Start Line (0x00~0x3F
-             -)
-  196   1      
-  197   1          OLED_WR_Byte(0x81,OLED_CMD);//--set contrast control register
-  198   1      
-  199   1          OLED_WR_Byte(0xCF,OLED_CMD);// Set SEG Output Current Brightness
-  200   1      
-  201   1          OLED_WR_Byte(0xA1,OLED_CMD);//--Set SEG/Column Mapping     0xa0���ҷ��� 0xa1����
-  202   1      
-  203   1          OLED_WR_Byte(0xC8,OLED_CMD);//Set COM/Row Scan Direction   0xc0���·��� 0xc8����
-  204   1      
-  205   1          OLED_WR_Byte(0xA6,OLED_CMD);//--set normal display
-  206   1      
-  207   1          OLED_WR_Byte(0xA8,OLED_CMD);//--set multiplex ratio(1 to 64)
-  208   1      
-  209   1          OLED_WR_Byte(0x3f,OLED_CMD);//--1/64 duty
-  210   1      
-  211   1          OLED_WR_Byte(0xD3,OLED_CMD);//-set display offset   Shift Mapping RAM Counter (0x00~0x3F)
-  212   1      
-  213   1          OLED_WR_Byte(0x00,OLED_CMD);//-not offset
-  214   1      
-  215   1          OLED_WR_Byte(0xd5,OLED_CMD);//--set display clock divide ratio/oscillator frequency
-  216   1      
-  217   1          OLED_WR_Byte(0x80,OLED_CMD);//--set divide ratio, Set Clock as 100 Frames/Sec
-  218   1      
-  219   1          OLED_WR_Byte(0xD9,OLED_CMD);//--set pre-charge period
-  220   1      
-  221   1          OLED_WR_Byte(0xF1,OLED_CMD);//Set Pre-Charge as 15 Clocks & Discharge as 1 Clock
-  222   1      
-  223   1          OLED_WR_Byte(0xDA,OLED_CMD);//--set com pins hardware configuration
-  224   1      
-  225   1          OLED_WR_Byte(0x12,OLED_CMD);
-  226   1      
-  227   1          OLED_WR_Byte(0xDB,OLED_CMD);//--set vcomh
-  228   1      
-  229   1          OLED_WR_Byte(0x40,OLED_CMD);//Set VCOM Deselect Level
-  230   1      
-  231   1          OLED_WR_Byte(0x20,OLED_CMD);//-Set Page Addressing Mode (0x00/0x01/0x02)
-  232   1      
-  233   1          OLED_WR_Byte(0x00,OLED_CMD);//
-  234   1      
-  235   1          OLED_WR_Byte(0x8D,OLED_CMD);//--set Charge Pump enable/disable
-  236   1      
-  237   1          OLED_WR_Byte(0x14,OLED_CMD);//--set(0x10) disable
-  238   1      
-  239   1          OLED_WR_Byte(0xA4,OLED_CMD);// Disable Entire Display On (0xa4/0xa5)
-  240   1      
-  241   1          OLED_WR_Byte(0xA6,OLED_CMD);// Disable Inverse Display On (0xa6/a7) 
-  242   1      
-  243   1          OLED_WR_Byte(0xAF,OLED_CMD);
-  244   1      
-  245   1          
-  246   1      
-  247   1          OLED_DisplayOn();
-  248   1      
-  249   1      }
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 5   
+  188          {
+  189   1          unsigned int xdata j = 0;
+  190   1          unsigned char xdata x, y;
+  191   1          for (y = y0; y < (y1 + y0); y++)
+  192   1          {
+  193   2              OLED_Set_Pos(x0, y);
+  194   2              for (x = 0; x < x1; x++)
+  195   2                  OLED_WR_Byte(BMP[j++], OLED_DATA);
+  196   2          }
+  197   1      }
+  198          
+  199          void OLED_BuffShowPoint(unsigned char x, unsigned char y)
+  200          {
+  201   1          ShowBUFF[y / 8][x] |= 1 << (y % 8);
+  202   1      }
+  203          
+  204          void OLED_BuffShowLine(unsigned char x1, unsigned char y1,
+  205                                 unsigned char x2, unsigned char y2)
+  206          {
+  207   1          unsigned char x, y;
+  208   1          if (x1 > x2) { x=x1;x1=x2;x2=x; y=y1;y1=y2;y2=y; }
+  209   1          if (x1 != x2)
+  210   1          {
+  211   2              for (x = x1; x <= x2; x++)
+  212   2              {
+  213   3                  if (y2 > y1)
+  214   3                      OLED_BuffShowPoint(x, (unsigned char)(y1 + (unsigned int)(y2-y1)*(unsigned int)x/(unsigne
+             -d int)(x2-x1)));
+  215   3                  else
+  216   3                      OLED_BuffShowPoint(x, (unsigned char)(y1 - (unsigned int)(y1-y2)*(unsigned int)x/(unsigne
+             -d int)(x2-x1)));
+  217   3              }
+  218   2          }
+  219   1          else
+  220   1          {
+  221   2              if (y1 > y2) { for (y=y2; y<=y1; y++) OLED_BuffShowPoint(x1,y); }
+  222   2              else          { for (y=y1; y<=y2; y++) OLED_BuffShowPoint(x1,y); }
+  223   2          }
+  224   1      }
+  225          
+  226          void OLED_BuffShowRectangle(unsigned char x1, unsigned char y1,
+  227                                       unsigned char x2, unsigned char y2)
+  228          {
+  229   1          OLED_BuffShowLine(x1,y1,x2,y1);
+  230   1          OLED_BuffShowLine(x1,y1,x1,y2);
+  231   1          OLED_BuffShowLine(x1,y2,x2,y2);
+  232   1          OLED_BuffShowLine(x2,y1,x2,y2);
+  233   1      }
+  234          
+  235          void OLED_BuffShowCircle(unsigned char x, unsigned char y, unsigned char r)
+  236          {
+  237   1          int a, b, di;
+  238   1          unsigned char x_add_a, x_add_b, x_sub_a, x_sub_b;
+  239   1          unsigned char y_add_a, y_add_b, y_sub_a, y_sub_b;
+  240   1          a=0; b=r; di=3-(r<<1);
+  241   1          while (a <= b)
+  242   1          {
+  243   2              x_add_a=x+a; x_add_b=x+b; x_sub_a=x-a; x_sub_b=x-b;
+  244   2              y_add_a=y+a; y_add_b=y+b; y_sub_a=y-a; y_sub_b=y-b;
+  245   2              OLED_BuffShowPoint(x_add_a, y_sub_b);
+  246   2              OLED_BuffShowPoint(x_add_b, y_sub_a);
+  247   2              OLED_BuffShowPoint(x_sub_b, y_add_a);
+  248   2              OLED_BuffShowPoint(x_sub_a, y_add_b);
+  249   2              OLED_BuffShowPoint(x_sub_a, y_sub_b);
+  250   2              OLED_BuffShowPoint(x_add_b, y_add_a);
+  251   2              OLED_BuffShowPoint(x_sub_b, y_sub_a);
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 5   
 
-  250          
-  251          
-  252          
-  253          
-  254          
-  255          //========================================================================
-  256          
-  257          // ��������: OLED_Set_Pos
+  252   2              OLED_BuffShowPoint(x_add_a, y_add_b);
+  253   2              a++;
+  254   2              if (di < 0) di += 4*a+6;
+  255   2              else { di += 10+4*(a-b); b--; }
+  256   2          }
+  257   1      }
   258          
-  259          // ��������: OLED������ʾλ��
-  260          
-  261          // ��ڲ���: @x:x����     @y:y����
-  262          
-  263          // ��������: ��
-  264          
-  265          // ��ǰ�汾: VER1.0
-  266          
-  267          // �޸�����: 2023 - 6 - 7
-  268          
-  269          // ��ǰ����: ZCF
-  270          
-  271          // ������ע:
+  259          void OLED_BuffShowChar(unsigned char x, unsigned char y,
+  260                                 char asc, unsigned char mode)
+  261          {
+  262   1          unsigned char j, k;
+  263   1          for (j = 0; j < 2; j++)
+  264   1              for (k = 0; k < 8; k++)
+  265   1              {
+  266   2                  if (mode == 0)
+  267   2                      ShowBUFF[j+y][x+k] = Ascll_16[(asc-' ')*2][j*8+k];
+  268   2                  else
+  269   2                      ShowBUFF[j+y][x+k] = ~Ascll_16[(asc-' ')*2][j*8+k];
+  270   2              }
+  271   1      }
   272          
-  273          //========================================================================
-  274          
-  275          void OLED_Set_Pos(unsigned char x, unsigned char y) 
-  276          
-  277          { 
-  278   1      
-  279   1              OLED_WR_Byte((unsigned char)(0xb0+y),OLED_CMD);
-  280   1      
-  281   1              OLED_WR_Byte(((x&0xf0)>>4)|0x10,OLED_CMD);
-  282   1      
-  283   1              OLED_WR_Byte((x&0x0f)|0x01,OLED_CMD); 
-  284   1      
-  285   1      }   
-  286          
-  287          
-  288          
-  289          
-  290          
-  291          //========================================================================
-  292          
-  293          // ��������: OLED_DrawBMP
-  294          
-  295          // ��������: OLED��ʾͼƬ
-  296          
-  297          // ��ڲ���: @x0:x���  @y0:y���    @x1:x�յ�   @y1:y�յ�  @BMP����ʾ
-             -����
-  298          
-  299          // ��������: ��
-  300          
-  301          // ��ǰ�汾: VER1.0
-  302          
-  303          // �޸�����: 2023 - 6 - 7
-  304          
-  305          // ��ǰ����: ZCF
-  306          
-  307          // ������ע:
-  308          
-  309          //========================================================================
-  310          
-  311          void OLED_DrawBMP(unsigned char x0, unsigned char y0,unsigned char x1, unsigned char y1,unsigned char BMP
-             -[])
-  312          
-  313          {       
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 6   
+  273          void OLED_BuffShowGBK(unsigned char x, unsigned char y,
+  274                                char *gbk, unsigned char mode)
+  275          {
+  276   1          unsigned char i, j, k;
+  277   1          for (i = 0; i < sizeof(GBK16)/sizeof(GBK16[0]); i++)
+  278   1          {
+  279   2              if ((gbk[0]==GBK16[i].gbn_bum[0]) && (gbk[1]==GBK16[i].gbn_bum[1]))
+  280   2              {
+  281   3                  for (j = 0; j < 2; j++)
+  282   3                      for (k = 0; k < 16; k++)
+  283   3                      {
+  284   4                          if (mode == 0)
+  285   4                              ShowBUFF[j+y][x+k] = GBK16[i].gbk_font[j*16+k];
+  286   4                          else
+  287   4                              ShowBUFF[j+y][x+k] = ~GBK16[i].gbk_font[j*16+k];
+  288   4                      }
+  289   3                  break;
+  290   3              }
+  291   2          }
+  292   1      }
+  293          
+  294          void OLED_BuffShowString(unsigned char x, unsigned char y,
+  295                                   char *s, unsigned char mode)
+  296          {
+  297   1          char s_num[2];
+  298   1          while (*s != '\0')
+  299   1          {
+  300   2              if ((unsigned char)*s < 0x80)
+  301   2              {
+  302   3                  OLED_BuffShowChar(x, y, *s, mode);
+  303   3                  x += 8; s++;
+  304   3              }
+  305   2              else
+  306   2              {
+  307   3                  s_num[0] = *s; s_num[1] = *(s+1);
+  308   3                  OLED_BuffShowGBK(x, y, s_num, mode);
+  309   3                  x += 16; s += 2;
+  310   3              }
+  311   2              if (x > 127) { x=0; y+=2; }
+  312   2          }
+  313   1      }
+  314          
+  315          void OLED_BuffShowNum(unsigned char x, unsigned char y,
+  316                                long num, unsigned char mode)
+  317          {
+C251 COMPILER V5.60.0,  oled                                                               15/03/26  13:22:10  PAGE 6   
 
-  314   1      
-  315   1          unsigned int xdata j=0;
-  316   1      
-  317   1          unsigned char xdata x,y;
-  318   1      
-  319   1      
-  320   1      
-  321   1          for(y=y0;y<(y1+y0);y++)
-  322   1      
-  323   1          {
-  324   2      
-  325   2              OLED_Set_Pos(x0,y);
-  326   2      
-  327   2              for(x=0;x<x1;x++)
-  328   2      
-  329   2              {      
-  330   3      
-  331   3                  OLED_WR_Byte(BMP[j++],OLED_DATA);           
-  332   3      
-  333   3              }
-  334   2      
-  335   2          }
-  336   1      
-  337   1      } 
-  338          
-  339          
-  340          
-  341          //========================================================================
-  342          
-  343          // ��������: OLED_DisplayOn
-  344          
-  345          // ��������: OLED����ʾ
+  318   1          unsigned char xdata str[10];
+  319   1          memset(str, 0, 10);
+  320   1          sprintf(str, "%ld", num);
+  321   1          OLED_BuffShowString(x, y, (unsigned char*)str, mode);
+  322   1      }
+  323          
+  324          void OLED_BuffShowNum02F(unsigned char x, unsigned char y,
+  325                                   float num, unsigned char mode)
+  326          {
+  327   1          unsigned char xdata str[10];
+  328   1          memset(str, 0, 10);
+  329   1          sprintf(str, "%.2f", num);
+  330   1          OLED_BuffShowString(x, y, (unsigned char*)str, mode);
+  331   1      }
+  332          
+  333          void OLED_BuffShowChar32(unsigned char x, unsigned char y,
+  334                                   unsigned char num, unsigned char mode)
+  335          {
+  336   1          unsigned char j, k;
+  337   1          for (j = 0; j < 4; j++)
+  338   1              for (k = 0; k < 16; k++)
+  339   1              {
+  340   2                  if (mode == 0)
+  341   2                      ShowBUFF[j+y][x+k] = lib_num1632[num][j*16+k];
+  342   2                  else
+  343   2                      ShowBUFF[j+y][x+k] = ~lib_num1632[num][j*16+k];
+  344   2              }
+  345   1      }
   346          
-  347          // ��ڲ���: ��
-  348          
-  349          // ��������: ��
-  350          
-  351          // ��ǰ�汾: VER1.0
-  352          
-  353          // �޸�����: 2023 - 6 - 7
-  354          
-  355          // ��ǰ����: ZCF
-  356          
-  357          // ������ע:
-  358          
-  359          //========================================================================
-  360          
-  361          void OLED_DisplayOn(void)     //����ʾ
-  362          
-  363          {
-  364   1      
-  365   1          OLED_WR_Byte(0x8D,OLED_CMD);//��ɱ�ʹ��
-  366   1      
-  367   1          OLED_WR_Byte(0x14,OLED_CMD);//������ɱ�
-  368   1      
-  369   1          OLED_WR_Byte(0xAF,OLED_CMD);//������Ļ       
-  370   1      
-  371   1      }
-  372          
-  373            
-  374          
-  375          //========================================================================
-  376          
-  377          // ��������: OLED_DisplayOff
-  378          
-  379          // ��������: OLED����ʾ
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 7   
-
-  380          
-  381          // ��ڲ���: ��
-  382          
-  383          // ��������: ��
-  384          
-  385          // ��ǰ�汾: VER1.0
-  386          
-  387          // �޸�����: 2023 - 6 - 7
-  388          
-  389          // ��ǰ����: ZCF
-  390          
-  391          // ������ע:
-  392          
-  393          //========================================================================
-  394          
-  395          void OLED_DisplayOff(void)     //����ʾ
-  396          
-  397          {
-  398   1      
-  399   1          OLED_WR_Byte(0x8D,OLED_CMD);//��ɱ�ʹ��
-  400   1      
-  401   1          OLED_WR_Byte(0x10,OLED_CMD);//�رյ�ɱ�
-  402   1      
-  403   1          OLED_WR_Byte(0xAF,OLED_CMD);//�ر���Ļ        
-  404   1      
-  405   1      }
-  406          
-  407          
-  408          
-  409          //========================================================================
-  410          
-  411          // ��������: OLED_LightSet
-  412          
-  413          // ��������: OLED��������
-  414          
-  415          // ��ڲ���: @num�� 0-255
-  416          
-  417          // ��������: ��
-  418          
-  419          // ��ǰ�汾: VER1.0
-  420          
-  421          // �޸�����: 2023 - 6 - 7
-  422          
-  423          // ��ǰ����: ZCF
-  424          
-  425          // ������ע:
-  426          
-  427          //========================================================================
-  428          
-  429          void OLED_LightSet(unsigned char num)     //��������
-  430          
-  431          {
-  432   1      
-  433   1          OLED_WR_Byte(0x81,OLED_CMD);//
-  434   1      
-  435   1          OLED_WR_Byte(num,OLED_CMD);//  
-  436   1      
-  437   1          OLED_WR_Byte(0xDB,OLED_CMD);//--set vcomh
-  438   1      
-  439   1          OLED_WR_Byte(0x20,OLED_CMD);//Set VCOM Deselect Level   
-  440   1      
-  441   1      }
-  442          
-  443          
-  444          
-  445          
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 8   
-
-  446          
-  447          //========================================================================
-  448          
-  449          // ��������: OLED_BuffClear
-  450          
-  451          // ��������: OLED��ջ���
-  452          
-  453          // ��ڲ���: ��
-  454          
-  455          // ��������: ��
-  456          
-  457          // ��ǰ�汾: VER1.0
-  458          
-  459          // �޸�����: 2023 - 6 - 7
-  460          
-  461          // ��ǰ����: ZCF
-  462          
-  463          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  464          
-  465          //========================================================================
-  466          
-  467          void OLED_BuffClear(void)     //����
-  468          
-  469          {
-  470   1      
-  471   1          memset(ShowBUFF,0,128*8);
-  472   1      
-  473   1      }
-  474          
-  475          
-  476          
-  477          //========================================================================
-  478          
-  479          // ��������: OLED_BuffShow
-  480          
-  481          // ��������: OLEDˢ����ʾ
-  482          
-  483          // ��ڲ���: ��
-  484          
-  485          // ��������: ��
-  486          
-  487          // ��ǰ�汾: VER1.0
-  488          
-  489          // �޸�����: 2024 - 4 - 3
-  490          
-  491          // ��ǰ����: ZCF, PatZer0
-  492          
-  493          // ������ע:
-  494          
-  495          //========================================================================
-  496          
-  497          void OLED_BuffShow(void)     
-  498          
-  499          {
-  500   1      
-  501   1          unsigned char xdata i,n,j;
-  502   1      
-  503   1          for(i=0;i<8;i++)
-  504   1      
-  505   1          {
-  506   2      
-  507   2              j = 0xb0 + i;             //C251�����Ͻ�������д�Ա���warning
-  508   2      
-  509   2              OLED_WR_Byte(j,OLED_CMD); //��������ʼ��ַ
-  510   2      
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 9   
-
-  511   2              OLED_WR_Byte(0x00,OLED_CMD);   //���õ�����ʼ��ַ    // �޸ĵ�����
-             -�ʼ�������������Ļ��ʾ��ȫ
-  512   2      
-  513   2              OLED_WR_Byte(0x10,OLED_CMD);   //���ø�����ʼ��ַ
-  514   2      
-  515   2      
-  516   2      
-  517   2              for(n=0;n<128;n++)
-  518   2      
-  519   2                  OLED_WR_Byte(ShowBUFF[i][n],OLED_DATA);
-  520   2      
-  521   2          }
-  522   1      
-  523   1      }
-  524          
-  525          
-  526          
-  527          //========================================================================
-  528          
-  529          // ��������: OLED_BuffShowPoint
-  530          
-  531          // ��������: OLED��ʾһ����
-  532          
-  533          // ��ڲ���: @x��x���   @y:y���
-  534          
-  535          // ��������: ��
-  536          
-  537          // ��ǰ�汾: VER1.0
-  538          
-  539          // �޸�����: 2023 - 6 - 7
-  540          
-  541          // ��ǰ����: ZCF
-  542          
-  543          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  544          
-  545          //========================================================================
-  546          
-  547          void OLED_BuffShowPoint(unsigned char x,unsigned char y)     //OLED��ʾһ����
-  548          
-  549          {
-  550   1      
-  551   1          ShowBUFF[y/8][x] |= 1<<(y%8);
-  552   1      
-  553   1      }
-  554          
-  555          
-  556          
-  557          //========================================================================
-  558          
-  559          // ��������: OLED_BuffShowPoint
-  560          
-  561          // ��������: OLED��ʾһ����
-  562          
-  563          // ��ڲ���: @x1��x���  @y1��y���  @x2��x�յ�   @y2��y�յ�
-  564          
-  565          // ��������: ��
-  566          
-  567          // ��ǰ�汾: VER1.0
-  568          
-  569          // �޸�����: 2023 - 6 - 7
-  570          
-  571          // ��ǰ����: ZCF
-  572          
-  573          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 10  
-
-  574          
-  575          //========================================================================
-  576          
-  577          void OLED_BuffShowLine( unsigned char x1, unsigned char y1, unsigned char x2,unsigned char y2)
-  578          
-  579          {
-  580   1      
-  581   1          unsigned char x,y;
-  582   1      
-  583   1          if( x1>x2 )
-  584   1      
-  585   1          {
-  586   2      
-  587   2              x=x1;x1=x2;x2=x;
-  588   2      
-  589   2              y=y1;y1=y2;y2=y;
-  590   2      
-  591   2          }
-  592   1      
-  593   1          if(x1!=x2)
-  594   1      
-  595   1          {
-  596   2      
-  597   2              for( x = x1; x <= x2; x++ )
-  598   2      
-  599   2              {
-  600   3      
-  601   3                  if( y2>y1 )
-  602   3      
-  603   3                      OLED_BuffShowPoint(x, (unsigned char)(y1+(unsigned int)(y2-y1)*(unsigned int)x/(unsigned 
-             -int)(x2-x1)));
-  604   3      
-  605   3                  else
-  606   3      
-  607   3                      OLED_BuffShowPoint(x, (unsigned char)(y1-(unsigned int)(y1-y2)*(unsigned int)x/(unsigned 
-             -int)(x2-x1)));
-  608   3      
-  609   3              }        
-  610   2      
-  611   2          }
-  612   1      
-  613   1          else
-  614   1      
-  615   1          {
-  616   2      
-  617   2              if( y1>y2 )
-  618   2      
-  619   2              {
-  620   3      
-  621   3                  for( y = y2; y <= y1; y++ )
-  622   3      
-  623   3                     OLED_BuffShowPoint(x1, y); 
-  624   3      
-  625   3              }
-  626   2      
-  627   2              else
-  628   2      
-  629   2              {
-  630   3      
-  631   3                  for( y = y1; y <= y2; y++ )
-  632   3      
-  633   3                     OLED_BuffShowPoint(x1, y);             
-  634   3      
-  635   3              }
-  636   2      
-  637   2          }
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 11  
-
-  638   1      
-  639   1      }
-  640          
-  641          
-  642          
-  643          //========================================================================
-  644          
-  645          // ��������: OLED_BuffShowRectangle
-  646          
-  647          // ��������: OLED��ʾһ������
-  648          
-  649          // ��ڲ���: @x1��x���  @y1��y���  @x2��x�յ�   @y2��y�յ�
-  650          
-  651          // ��������: ��
-  652          
-  653          // ��ǰ�汾: VER1.0
-  654          
-  655          // �޸�����: 2023 - 6 - 7
-  656          
-  657          // ��ǰ����: ZCF
-  658          
-  659          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  660          
-  661          //========================================================================
-  662          
-  663          void OLED_BuffShowRectangle(unsigned char x1, unsigned char y1, unsigned char x2, unsigned char y2)
-  664          
-  665          {
-  666   1      
-  667   1          OLED_BuffShowLine(x1, y1, x2, y1);
-  668   1      
-  669   1          OLED_BuffShowLine(x1, y1, x1, y2);
-  670   1      
-  671   1          OLED_BuffShowLine(x1, y2, x2, y2);
-  672   1      
-  673   1          OLED_BuffShowLine(x2, y1, x2, y2);
-  674   1      
-  675   1      }
-  676          
-  677          
-  678          
-  679          //========================================================================
-  680          
-  681          // ��������: OLED_BuffShowCircle
-  682          
-  683          // ��������: OLED��ʾһ��Բ��
-  684          
-  685          // ��ڲ���: @x��x��  @y��y��  @r:�뾶
-  686          
-  687          // ��������: ��
-  688          
-  689          // ��ǰ�汾: VER1.1
-  690          
-  691          // �޸�����: 2024 - 3 - 28
-  692          
-  693          // ��ǰ����: ZCF, PatZer0
-  694          
-  695          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  696          
-  697          //========================================================================
-  698          
-  699          void OLED_BuffShowCircle(unsigned char x, unsigned char y, unsigned char r)
-  700          
-  701          {
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 12  
-
-  702   1      
-  703   1          int a, b;
-  704   1      
-  705   1          int di;
-  706   1      
-  707   1          unsigned char x_add_a, x_add_b, x_sub_a, x_sub_b, y_add_a, y_add_b, y_sub_a, y_sub_b;
-  708   1      
-  709   1      
-  710   1      
-  711   1          a = 0;
-  712   1      
-  713   1          b = r;
-  714   1      
-  715   1          di = 3 - (r << 1);       //�ж��¸���λ�õı�־
-  716   1      
-  717   1       
-  718   1      
-  719   1          while (a <= b)
-  720   1      
-  721   1          {
-  722   2      
-  723   2              x_add_a = x + a;
-  724   2      
-  725   2              x_add_b = x + b;
-  726   2      
-  727   2              x_sub_a = x - a;
-  728   2      
-  729   2              x_sub_b = x - b;
-  730   2      
-  731   2              y_add_a = y + a;
-  732   2      
-  733   2              y_add_b = y + b;
-  734   2      
-  735   2              y_sub_a = y - a;
-  736   2      
-  737   2              y_sub_b = y - b;
-  738   2      
-  739   2              OLED_BuffShowPoint(x_add_a, y_sub_b);        //5
-  740   2      
-  741   2              OLED_BuffShowPoint(x_add_b, y_sub_a);        //0
-  742   2      
-  743   2              OLED_BuffShowPoint(x_sub_b, y_add_a);        //4
-  744   2      
-  745   2              OLED_BuffShowPoint(x_sub_a, y_add_b);        //6
-  746   2      
-  747   2              OLED_BuffShowPoint(x_sub_a, y_sub_b);        //1
-  748   2      
-  749   2              OLED_BuffShowPoint(x_add_b, y_add_a);
-  750   2      
-  751   2              OLED_BuffShowPoint(x_sub_b, y_sub_a);        //2
-  752   2      
-  753   2              OLED_BuffShowPoint(x_add_a, y_add_b);        //7
-  754   2      
-  755   2              //��д���룬����C251��Warning
-  756   2      
-  757   2      
-  758   2      
-  759   2              a++;
-  760   2      
-  761   2       
-  762   2      
-  763   2              //ʹ��Bresenham�㷨��Բ
-  764   2      
-  765   2              if (di < 0)di += 4 * a + 6;
-  766   2      
-  767   2              else
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 13  
-
-  768   2      
-  769   2              {
-  770   3      
-  771   3                  di += 10 + 4 * (a - b);
-  772   3      
-  773   3                  b--;
-  774   3      
-  775   3              }
-  776   2      
-  777   2          }
-  778   1      
-  779   1      }
-  780          
-  781          
-  782          
-  783          //========================================================================
-  784          
-  785          // ��������: OLED_BuffShowChar
-  786          
-  787          // ��������: OLED��ʾһ��8*16���ַ�
-  788          
-  789          // ��ڲ���: @x��x��  @y��y��  @asc:�ַ�   @mode��0����  1��
-             -��
-  790          
-  791          // ��������: ��
-  792          
-  793          // ��ǰ�汾: VER1.0
-  794          
-  795          // �޸�����: 2023 - 6 - 7
-  796          
-  797          // ��ǰ����: ZCF
-  798          
-  799          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  800          
-  801          //========================================================================
-  802          
-  803          void OLED_BuffShowChar(unsigned char x,unsigned char y,char asc, unsigned char mode)     //OLED��ʾһ
-             -��8*16�ַ�
-  804          
-  805          {
-  806   1      
-  807   1          unsigned char j,k;
-  808   1      
-  809   1          for( j=0;j<2;j++ )
-  810   1      
-  811   1          {
-  812   2      
-  813   2              for( k=0;k<8;k++ )
-  814   2      
-  815   2              {
-  816   3      
-  817   3                  if(mode==0)            
-  818   3      
-  819   3                      ShowBUFF[j+y][x+k]=Ascll_16[(asc-' ')*2][j*8+k];
-  820   3      
-  821   3                  else
-  822   3      
-  823   3                      ShowBUFF[j+y][x+k]=~Ascll_16[(asc-' ')*2][j*8+k];
-  824   3      
-  825   3              }
-  826   2      
-  827   2          }    
-  828   1      
-  829   1      }
-  830          
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 14  
-
-  831          
-  832          
-  833          //========================================================================
-  834          
-  835          // ��������: OLED_BuffShowGBK
-  836          
-  837          // ��������: OLED��ʾ����
-  838          
-  839          // ��ڲ���: @x��x��  @y��y��  @gbk:����   @mode��0����  1�
-             -����
-  840          
-  841          // ��������: ��
-  842          
-  843          // ��ǰ�汾: VER1.1
-  844          
-  845          // �޸�����: 2024 - 3 - 29
-  846          
-  847          // ��ǰ����: ZCF, PatZer0
-  848          
-  849          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  850          
-  851          //          �õ��ĺ�����Ҫ�Լ�ȡģ�ŵ��ֿ���ֿ��Ļ������
-             -������ѭ������Ҫ�Ŵ�
-  852          
-  853          //          �ֿ��ļ�font.h���к��ֵ�GBK16���飬�����Լ��޸�
-  854          
-  855          //          ԭ����ʹ�ù̶��ı�������������ֱ�Ӹ�ΪGBK16��
-             -���С��ȷ�������ֿⶼ������
-  856          
-  857          //========================================================================
-  858          
-  859          void OLED_BuffShowGBK(unsigned char x,unsigned char y,char *gbk,unsigned char mode)     //OLED��ʾһ�
-             -���16*16����
-  860          
-  861          {
-  862   1      
-  863   1          unsigned char i;
-  864   1      
-  865   1          unsigned char j,k;
-  866   1      
-  867   1          for( i=0;i<sizeof(GBK16)/sizeof(GBK16[0]);i++ )
-  868   1      
-  869   1          {
-  870   2      
-  871   2              if((gbk[0] == GBK16[i].gbn_bum[0])
-  872   2      
-  873   2               &&(gbk[1] == GBK16[i].gbn_bum[1])
-  874   2      
-  875   2                              )
-  876   2      
-  877   2              {
-  878   3      
-  879   3                  for( j=0;j<2;j++ )
-  880   3      
-  881   3                  {
-  882   4      
-  883   4                      for( k=0;k<16;k++ )
-  884   4      
-  885   4                      {
-  886   5      
-  887   5                          if( mode ==0 )
-  888   5      
-  889   5                              ShowBUFF[j+y][x+k]=GBK16[i].gbk_font[j*16+k];
-  890   5      
-  891   5                          else
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 15  
-
-  892   5      
-  893   5                              ShowBUFF[j+y][x+k]=~GBK16[i].gbk_font[j*16+k];
-  894   5      
-  895   5                      }
-  896   4      
-  897   4                  }
-  898   3      
-  899   3                  break;
-  900   3      
-  901   3              }
-  902   2      
-  903   2          }    
-  904   1      
-  905   1      }
-  906          
-  907          
-  908          
-  909          //========================================================================
-  910          
-  911          // ��������: OLED_BuffShowString
-  912          
-  913          // ��������: OLED��ʾ�ַ����������ַ�����
-  914          
-  915          // ��ڲ���: @x��x��  @y��y��  @s�ַ���   @mode��0����  1�
-             -���
-  916          
-  917          // ��������: ��
-  918          
-  919          // ��ǰ�汾: VER1.0
-  920          
-  921          // �޸�����: 2023 - 6 - 7
-  922          
-  923          // ��ǰ����: ZCF
-  924          
-  925          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
-  926          
-  927          //          �õ��ĺ�����Ҫ�Լ�ȡģ�ŵ��ֿ���ֿ��Ļ������
-             -������ѭ������Ҫ�Ŵ�
-  928          
-  929          //========================================================================
-  930          
-  931          void OLED_BuffShowString(unsigned char x,unsigned char y,char *s,unsigned char mode)
-  932          
-  933          {
-  934   1      
-  935   1          char s_num[2];
-  936   1      
-  937   1              while(*s != '\0')       //�ַ�����Ϊ�գ�ѭ��
-  938   1      
-  939   1              {
-  940   2      
-  941   2              if ((unsigned char)*s < 0x80)     //�����������ݵĴ�С�ж����ַ
-             -����Ǻ��֣�
-  942   2      
-  943   2              {
-  944   3      
-  945   3                  OLED_BuffShowChar(x,y,*s,mode);
-  946   3      
-  947   3                  x+=8;
-  948   3      
-  949   3                  s++;
-  950   3      
-  951   3              }
-  952   2      
-  953   2              else
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 16  
-
-  954   2      
-  955   2              {
-  956   3      
-  957   3                  s_num[0] = *s ;
-  958   3      
-  959   3                  s_num[1] = *(s+1) ;
-  960   3      
-  961   3                  OLED_BuffShowGBK(x,y,s_num,mode);
-  962   3      
-  963   3                  x+=16;
-  964   3      
-  965   3                  s+=2;
-  966   3      
-  967   3              }
-  968   2      
-  969   2                      if(x>127)
-  970   2      
-  971   2              {
-  972   3      
-  973   3                  x=0;
-  974   3      
-  975   3                  y+=2;
-  976   3      
-  977   3              }
-  978   2      
-  979   2              }       
-  980   1      
-  981   1      }
-  982          
-  983          
-  984          
-  985          //========================================================================
-  986          
-  987          // ��������: OLED_BuffShowNum
-  988          
-  989          // ��������: OLED��ʾ���α���
-  990          
-  991          // ��ڲ���: @x��x��  @y��y��  @num�����α���   @mode��0��
-             -����  1����
-  992          
-  993          // ��������: ��
-  994          
-  995          // ��ǰ�汾: VER1.1
-  996          
-  997          // �޸�����: 2024 - 3 - 28
-  998          
-  999          // ��ǰ����: ZCF, PatZer0
- 1000          
- 1001          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
- 1002          
- 1003          //========================================================================
- 1004          
- 1005          void OLED_BuffShowNum(unsigned char x,unsigned char y,long num,unsigned char mode)
- 1006          
- 1007          {
- 1008   1      
- 1009   1          unsigned char xdata str[10];
- 1010   1      
- 1011   1          memset(str,0,10);
- 1012   1      
- 1013   1          sprintf(str,"%ld",num);
- 1014   1      
- 1015   1          OLED_BuffShowString(x,y,(unsigned char*)str, mode);
- 1016   1      
- 1017   1      }
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 17  
-
- 1018          
- 1019          
- 1020          
- 1021          //========================================================================
- 1022          
- 1023          // ��������: OLED_BuffShowNum02F
- 1024          
- 1025          // ��������: OLED��ʾһ����λС������
- 1026          
- 1027          // ��ڲ���: @x��x��  @y��y��  @num��С������   @mode��0��
-             -����  1����
- 1028          
- 1029          // ��������: ��
- 1030          
- 1031          // ��ǰ�汾: VER1.0
- 1032          
- 1033          // �޸�����: 2023 - 6 - 7
- 1034          
- 1035          // ��ǰ����: ZCF
- 1036          
- 1037          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
- 1038          
- 1039          //========================================================================
- 1040          
- 1041          void OLED_BuffShowNum02F(unsigned char x,unsigned char y,float num,unsigned char mode)
- 1042          
- 1043          {
- 1044   1      
- 1045   1          unsigned char xdata str[10];
- 1046   1      
- 1047   1          memset(str,0,10);
- 1048   1      
- 1049   1          sprintf(str,"%.2f",num);
- 1050   1      
- 1051   1          OLED_BuffShowString(x,y,(unsigned char*)str,mode);
- 1052   1      
- 1053   1      }
- 1054          
- 1055          
- 1056          
- 1057          
- 1058          
- 1059          //========================================================================
- 1060          
- 1061          // ��������: OLED_BuffShowChar32
- 1062          
- 1063          // ��������: OLED��ʾ16*32���ַ�
- 1064          
- 1065          // ��ڲ���: @x��x��  @y��y��  @num����ʾ�ڼ����ַ�   @mode�
-             -���0����  1����
- 1066          
- 1067          // ��������: ��
- 1068          
- 1069          // ��ǰ�汾: VER1.0
- 1070          
- 1071          // �޸�����: 2023 - 6 - 7
- 1072          
- 1073          // ��ǰ����: ZCF
- 1074          
- 1075          // ������ע: д����ǻ��棬��Ҫ�����OLED_BuffShow�������
-             -�����
- 1076          
- 1077          //          �õ�����Ҫ�Լ�ȡģŶ
- 1078          
- 1079          //========================================================================
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 18  
-
- 1080          
- 1081          void OLED_BuffShowChar32(unsigned char  x,unsigned char  y,unsigned char num, unsigned char mode)     
- 1082          
- 1083          {
- 1084   1      
- 1085   1          unsigned char j,k;
- 1086   1      
- 1087   1          for( j=0;j<4;j++ )
- 1088   1      
- 1089   1          {
- 1090   2      
- 1091   2              for( k=0;k<16;k++ )
- 1092   2      
- 1093   2              {
- 1094   3      
- 1095   3                  if( mode==0 )
- 1096   3      
- 1097   3                      ShowBUFF[j+y][x+k]=lib_num1632[num][j*16+k];
- 1098   3      
- 1099   3                  else
- 1100   3      
- 1101   3                      ShowBUFF[j+y][x+k]=~lib_num1632[num][j*16+k];
- 1102   3      
- 1103   3              }
- 1104   2      
- 1105   2          }            
- 1106   1      
- 1107   1      }
- 1108          
- 1109          
- 1110          
- 1111          
- 1112          
- 1113          //========================================================================
- 1114          
- 1115          // ��������: OLED_BuffShowBMP
- 1116          
- 1117          // ��������: OLED����д��ͼƬ
- 1118          
- 1119          // ��ڲ���: @x0:x���  @y0:y���    @x1:x�յ�   @y1:y�յ�  @BMP����ʾ
-             -����
- 1120          
- 1121          // ��������: ��
- 1122          
- 1123          // ��ǰ�汾: VER1.0
- 1124          
- 1125          // �޸�����: 2023 - 6 - 7
- 1126          
- 1127          // ��ǰ����: ZCF
- 1128          
- 1129          // ������ע:
- 1130          
- 1131          //========================================================================
- 1132          
- 1133          void OLED_BuffShowBMP(unsigned char x0, unsigned char y0,unsigned char x1, unsigned char y1,unsigned char
-             - BMP[])
- 1134          
- 1135          {       
- 1136   1      
- 1137   1          unsigned int xdata num=0;
- 1138   1      
- 1139   1          unsigned char k,j;
- 1140   1      
- 1141   1          
- 1142   1      
- 1143   1          for( j=0;j<y1;j++ )
-C251 COMPILER V5.60.0,  oled                                                               13/03/26  12:32:34  PAGE 19  
-
- 1144   1      
- 1145   1          {
- 1146   2      
- 1147   2              for( k=0;k<x1;k++ )
- 1148   2      
- 1149   2              {
- 1150   3      
- 1151   3                  ShowBUFF[j+y0][x0+k]=BMP[num++];
- 1152   3      
- 1153   3              }
- 1154   2      
- 1155   2          }  
- 1156   1      
- 1157   1      } 
- 1158          
- 1159           
+  347          void OLED_BuffShowBMP(unsigned char x0, unsigned char y0,
+  348                                unsigned char x1, unsigned char y1, unsigned char BMP[])
+  349          {
+  350   1          unsigned int xdata num = 0;
+  351   1          unsigned char k, j;
+  352   1          for (j = 0; j < y1; j++)
+  353   1              for (k = 0; k < x1; k++)
+  354   1                  ShowBUFF[j+y0][x0+k] = BMP[num++];
+  355   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      5293     ------
+  code size            =      5263     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
   pdata size           =    ------     ------
   xdata size           =      1024         23
   xdata-const size     =    ------     ------
-  edata size           =    ------         33
+  edata size           =    ------         32
   bit size             =    ------     ------
   ebit size            =    ------     ------
   bitaddressable size  =    ------     ------
@@ -1263,4 +401,4 @@ Module Information          Static   Overlayable
 End of Module Information.
 
 
-C251 COMPILATION COMPLETE.  6 WARNING(S),  0 ERROR(S)
+C251 COMPILATION COMPLETE.  3 WARNING(S),  0 ERROR(S)

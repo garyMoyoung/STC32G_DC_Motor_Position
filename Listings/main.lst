@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 1   
+C251 COMPILER V5.60.0,  main                                                               15/03/26  13:35:08  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE main
@@ -19,182 +19,181 @@ stmt  level    source
     9          #include <stdarg.h>
    10          #include "pic.h"
    11          #include "spi.h"
-*** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
-*** WARNING C323 IN LINE 16 OF spi.h: newline expected, extra characters found
    12          #include "oled.h"
-*** WARNING C323 IN LINE 1 OF spi.h: newline expected, extra characters found
    13          #include "main.h"
    14          #include "uart.h"
    15          #include "timer.h"
    16          #include "rs485.h"           // [MODBUS] 新增
-   17          
-   18          int  g_enc_cnt;
-   19          bit           B_Change;
-   20          volatile bit disp_flag = 0;
-   21          volatile unsigned int ms_tick = 0;
-   22          volatile unsigned int test_pwmb = 0;
-   23          
-   24          sbit     TOG  = P0^4;
-   25          
-   26          void CLK_Init(void)
-   27          {
-   28   1          P_SW2 |= 0x80;
-   29   1          HIRCCR = 0x80;
-   30   1          while (!(HIRCCR & 1));
-   31   1          CLKSEL = 0x00;
-   32   1          CLKDIV = 0x00;
-   33   1      }
-   34          
-   35          void Sys_init(void)
-   36          {
-   37   1          EAXFR = 1;
-   38   1          CKCON = 0x00;
-   39   1          WTST = 0x00;
-   40   1      
-   41   1          P0M1 = 0x00;   P0M0 = 0x00;
-   42   1          P1M1 = 0x00;   P1M0 = 0x00;
-   43   1          P2M1 = 0x00;   P2M0 = 0x00;
-   44   1          P3M1 = 0x00;   P3M0 = 0x00;
-   45   1          P4M1 = 0x00;   P4M0 = 0x00;
-   46   1          P5M1 = 0x00;   P5M0 = 0x00;
-   47   1          P6M1 = 0x00;   P6M0 = 0x00;
-   48   1          P7M1 = 0x00;   P7M0 = 0x00;
-   49   1      
-   50   1          P2M0 |= 0x2F;
-   51   1          P2M1 &= ~0x2F;
-   52   1      }
-   53          
-   54          void main(void)
-   55          {
-C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 2   
+   17          #include "key.h"
+   18          
+   19          int  g_enc_cnt;
+   20          bit           B_Change;
+   21          volatile bit disp_flag = 0;
+   22          volatile unsigned int ms_tick = 0;
+   23          volatile unsigned int test_pwmb = 0;
+   24          
+   25          sbit     TOG  = P0^4;
+   26          
+   27          void CLK_Init(void)
+   28          {
+   29   1          P_SW2 |= 0x80;
+   30   1          HIRCCR = 0x80;
+   31   1          while (!(HIRCCR & 1));
+   32   1          CLKSEL = 0x00;
+   33   1          CLKDIV = 0x00;
+   34   1      }
+   35          
+   36          void Sys_init(void)
+   37          {
+   38   1          EAXFR = 1;
+   39   1          CKCON = 0x00;
+   40   1          WTST = 0x00;
+   41   1      
+   42   1          P0M1 = 0x00;   P0M0 = 0x00;
+   43   1          P1M1 = 0x00;   P1M0 = 0x00;
+   44   1          P2M1 = 0x00;   P2M0 = 0x00;
+   45   1          P3M1 = 0x00;   P3M0 = 0x00;
+   46   1          P4M1 = 0x00;   P4M0 = 0x00;
+   47   1          P5M1 = 0x00;   P5M0 = 0x00;
+   48   1          P6M1 = 0x00;   P6M0 = 0x00;
+   49   1          P7M1 = 0x00;   P7M0 = 0x00;
+   50   1      
+   51   1          P2M0 |= 0x2F;
+   52   1          P2M1 &= ~0x2F;
+   53   1      }
+   54          
+   55          void main(void)
+   56          {
+   57   1          Sys_init();
+   58   1          CLK_Init();
+C251 COMPILER V5.60.0,  main                                                               15/03/26  13:35:08  PAGE 2   
 
-   56   1          Sys_init();
-   57   1          CLK_Init();
-   58   1          SPI_Init();
-   59   1          UART1_Init();
-   60   1          UART2_Init();
-   61   1          Timer0_Init();
-   62   1          PWM_Init();
-   63   1          PWMB_Encoder_Init();
-   64   1          Modbus_Init();              // [MODBUS] 新增：Modbus 初始化（在 UART2_Init 之后）
-   65   1      
-   66   1          OLED_Init();
-   67   1          OLED_BuffClear();
-   68   1          PWM_SetDuty(PWM_ARR / 4);
-   69   1          OLED_BuffShowString(0, 0, "Encod:", 0);
-   70   1          OLED_BuffShowString(0, 2, "Cnt:", 0);
-   71   1      
-   72   1          /* [MODBUS] 示例：将编码器计数映射到寄存器0，可供主机读取 */
-   73   1          // modbus_regs[0] = 0;  // 初始值，主循环中实时更新
+   59   1          SPI_Init();
+   60   1          UART1_Init();
+   61   1          UART2_Init();
+   62   1          Timer0_Init();
+   63   1          PWM_Init();
+   64   1          PWMB_Encoder_Init();
+   65   1          Modbus_Init();              // [MODBUS] 新增：Modbus 初始化（在 UART2_Init 之后）
+   66   1          PWM_SetDuty(PWM_ARR / 4);
+   67   1      
+   68   1          OLED_Init();
+   69   1          OLED_BuffClear();   // 现在会真正清零全部1024字节
+   70   1          OLED_BuffShow();    // 把全零刷入OLED硬件，清掉上电残影
+   71   1          OLED_BuffShowString(0, 0, "Encod:", 0);
+   72   1          OLED_BuffShowString(0, 2, "Cnt:", 0);
+   73   1          OLED_BuffShow();
    74   1      
-   75   1          while (1)
-   76   1          {
-   77   2              /* [MODBUS] 轮询处理 Modbus 帧（替代原来的 UART2_SendString） */
-   78   2              Modbus_Poll();
-   79   2      
-   80   2              /* [MODBUS] 将编码器计数实时写入寄存器0，主机可通过 FC03 读取 */
-   81   2              modbus_regs[0] = (unsigned int)g_enc_cnt;
-   82   2      
-   83   2              /* 原有调试输出（可保留或删除） */
-   84   2              // UART2_SendString("UART2_Hello World!\r\n");
-   85   2              Printf("cnt: %d\n", g_enc_cnt);
-   86   2              // Printf("[MB] rx_len=%d addr=%02X fc=%02X\r\n", rx_len, rx_buf[0], rx_buf[1]);
-   87   2              if (disp_flag)
-   88   2              {
-   89   3                  disp_flag = 0;
-   90   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
-   91   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
-   92   3                  OLED_BuffShow();
-   93   3              }
-   94   2          }
-   95   1      }
-   96          
-   97          
-   98          void UART1_ISR(void) interrupt 4
-   99          {
-  100   1          unsigned char dat;
-  101   1          if (RI)
-  102   1          {
-  103   2              RI = 0;
-  104   2              dat = SBUF;
-  105   2              // TODO: 添加调试命令解析
-  106   2          }
-  107   1          if (TI)
-  108   1          {
-  109   2              TI = 0;
-  110   2          }
-  111   1      }
-  112          
-  113          void UART2_ISR(void) interrupt 8
-  114          {
-  115   1          unsigned char next;
-  116   1      
-  117   1          /* 接收中断 */
-  118   1          if (S2CON & 0x01)               // S2RI
-  119   1          {
-  120   2              S2CON &= ~0x01;
-  121   2      
-C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 3   
+   75   1          /* [MODBUS] 示例：将编码器计数映射到寄存器0，可供主机读取 */
+   76   1          // modbus_regs[0] = 0;  // 初始值，主循环中实时更新
+   77   1      
+   78   1          while (1)
+   79   1          {
+   80   2              /* [MODBUS] 轮询处理 Modbus 帧（替代原来的 UART2_SendString） */
+   81   2              Modbus_Poll();
+   82   2              /* [MODBUS] 将编码器计数实时写入寄存器0，主机可通过 FC03 读取 */
+   83   2              modbus_regs[0] = (unsigned int)g_enc_cnt;
+   84   2              Key_HandleEvent();
+   85   2              /* 原有调试输出（可保留或删除） */
+   86   2              // UART2_SendString("UART2_Hello World!\r\n");
+   87   2              // Printf("cnt: %d\n", g_enc_cnt);
+   88   2              if (disp_flag)
+   89   2              {
+   90   3                  disp_flag = 0;
+   91   3                  OLED_BuffShowNum(48, 0, g_enc_cnt, 0);
+   92   3                  OLED_BuffShowNum(48, 2, ms_tick, 0);
+   93   3                  OLED_BuffShow();
+   94   3              }
+   95   2              
+   96   2          }
+   97   1      }
+   98          
+   99          
+  100          void UART1_ISR(void) interrupt 4
+  101          {
+  102   1          unsigned char dat;
+  103   1          if (RI)
+  104   1          {
+  105   2              RI = 0;
+  106   2              dat = SBUF;
+  107   2              // TODO: 添加调试命令解析
+  108   2          }
+  109   1          if (TI)
+  110   1          {
+  111   2              TI = 0;
+  112   2          }
+  113   1      }
+  114          
+  115          void UART2_ISR(void) interrupt 8
+  116          {
+  117   1          unsigned char next;
+  118   1      
+  119   1          /* 接收中断 */
+  120   1          if (S2CON & 0x01)               // S2RI
+  121   1          {
+  122   2              S2CON &= ~0x01;
+  123   2      
+  124   2              /* [MODBUS] 直接交给 Modbus 接收状态机，不再存入通用缓冲区 */
+C251 COMPILER V5.60.0,  main                                                               15/03/26  13:35:08  PAGE 3   
 
-  122   2              /* [MODBUS] 直接交给 Modbus 接收状态机，不再存入通用缓冲区 */
-  123   2              Modbus_RxByte(S2BUF);
-  124   2      
-  125   2              /*
-  126   2               * 若你仍需保留通用 UART2 缓冲区（如调试），可同时保留下面的代码：
-  127   2               *
-  128   2               * next = (uart2_rx_head + 1) % UART2_BUF_SIZE;
-  129   2               * if (next != uart2_rx_tail)
-  130   2               * {
-  131   2               *     uart2_rx_buf[uart2_rx_head] = S2BUF;
-  132   2               *     uart2_rx_head = next;
-  133   2               * }
-  134   2               */
-  135   2          }
-  136   1      
-  137   1          /* 发送中断（保持原有缓冲区发送机制不变） */
-  138   1          if (S2CON & 0x02)               // S2TI
-  139   1          {
-  140   2              S2CON &= ~0x02;
-  141   2      
-  142   2              if (uart2_tx_head != uart2_tx_tail)
-  143   2              {
-  144   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
-  145   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-  146   3              }
-  147   2              else
-  148   2              {
-  149   3                  uart2_tx_busy = 0;
-  150   3              }
-  151   2          }
-  152   1      }
-*** WARNING C47 IN LINE 115 OF main.c: 'next': unreferenced local variable
-  153          
-  154          void Timer0_ISR(void) interrupt 1
-  155          {
-  156   1          ms_tick++;
-  157   1      
-  158   1          /* [MODBUS] 3.5字符超时检测 */
-  159   1          Modbus_TimerTick();
-  160   1      
-  161   1          /* 编码器采样（每10ms） */
-  162   1          if (ms_tick % 10 == 0)
-  163   1          {
-  164   2              g_enc_cnt = Encoder_Read();
-  165   2          }
-  166   1      
-  167   1          /* OLED 刷新（每200ms） */
-  168   1          if (ms_tick % 20 == 0)
-  169   1          {
-  170   2              disp_flag = 1;
-  171   2          }
-  172   1      
-  173   1          if (ms_tick >= 10000) ms_tick = 0;
-  174   1      }
+  125   2              Modbus_RxByte(S2BUF);
+  126   2      
+  127   2              /*
+  128   2               * 若你仍需保留通用 UART2 缓冲区（如调试），可同时保留下面的代码：
+  129   2               *
+  130   2               * next = (uart2_rx_head + 1) % UART2_BUF_SIZE;
+  131   2               * if (next != uart2_rx_tail)
+  132   2               * {
+  133   2               *     uart2_rx_buf[uart2_rx_head] = S2BUF;
+  134   2               *     uart2_rx_head = next;
+  135   2               * }
+  136   2               */
+  137   2          }
+  138   1      
+  139   1          /* 发送中断（保持原有缓冲区发送机制不变） */
+  140   1          if (S2CON & 0x02)               // S2TI
+  141   1          {
+  142   2              S2CON &= ~0x02;
+  143   2      
+  144   2              if (uart2_tx_head != uart2_tx_tail)
+  145   2              {
+  146   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
+  147   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+  148   3              }
+  149   2              else
+  150   2              {
+  151   3                  uart2_tx_busy = 0;
+  152   3              }
+  153   2          }
+  154   1      }
+*** WARNING C47 IN LINE 117 OF main.c: 'next': unreferenced local variable
+  155          
+  156          void Timer0_ISR(void) interrupt 1
+  157          {
+  158   1          ms_tick++;
+  159   1      
+  160   1          /* [MODBUS] 3.5字符超时检测 */
+  161   1          Modbus_TimerTick();
+  162   1          Key_Scan();
+  163   1          /* 编码器采样（每10ms） */
+  164   1          if (ms_tick % 10 == 0)
+  165   1          {
+  166   2              g_enc_cnt = Encoder_Read();
+  167   2          }
+  168   1      
+  169   1          /* OLED 刷新（每200ms） */
+  170   1          if (ms_tick % 20 == 0)
+  171   1          {
+  172   2              disp_flag = 1;
+  173   2          }
+  174   1      
+  175   1          if (ms_tick >= 10000) ms_tick = 0;
+  176   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      3603     ------
+  code size            =      3595     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -203,16 +202,16 @@ Module Information          Static   Overlayable
   xdata-const size     =    ------     ------
   edata size           =         6     ------
   bit size             =         2     ------
-C251 COMPILER V5.60.0,  main                                                               15/03/26  11:56:29  PAGE 4   
-
   ebit size            =    ------     ------
+C251 COMPILER V5.60.0,  main                                                               15/03/26  13:35:08  PAGE 4   
+
   bitaddressable size  =    ------     ------
   ebitaddressable size =    ------     ------
   far data size        =    ------     ------
   huge data size       =    ------     ------
   const size           =    ------     ------
-  hconst size          =        35     ------
+  hconst size          =        26     ------
 End of Module Information.
 
 
-C251 COMPILATION COMPLETE.  4 WARNING(S),  0 ERROR(S)
+C251 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

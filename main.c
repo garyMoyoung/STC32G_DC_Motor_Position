@@ -14,6 +14,7 @@
 #include "uart.h"
 #include "timer.h"
 #include "rs485.h"           // [MODBUS] 新增
+#include "key.h"
 
 int  g_enc_cnt;
 bit           B_Change;
@@ -62,12 +63,14 @@ void main(void)
     PWM_Init();
     PWMB_Encoder_Init();
     Modbus_Init();              // [MODBUS] 新增：Modbus 初始化（在 UART2_Init 之后）
+    PWM_SetDuty(PWM_ARR / 4);
 
     OLED_Init();
-    OLED_BuffClear();
-    PWM_SetDuty(PWM_ARR / 4);
+    OLED_BuffClear();   // 现在会真正清零全部1024字节
+    OLED_BuffShow();    // 把全零刷入OLED硬件，清掉上电残影
     OLED_BuffShowString(0, 0, "Encod:", 0);
     OLED_BuffShowString(0, 2, "Cnt:", 0);
+    OLED_BuffShow();
 
     /* [MODBUS] 示例：将编码器计数映射到寄存器0，可供主机读取 */
     // modbus_regs[0] = 0;  // 初始值，主循环中实时更新
@@ -76,14 +79,12 @@ void main(void)
     {
         /* [MODBUS] 轮询处理 Modbus 帧（替代原来的 UART2_SendString） */
         Modbus_Poll();
-
         /* [MODBUS] 将编码器计数实时写入寄存器0，主机可通过 FC03 读取 */
         modbus_regs[0] = (unsigned int)g_enc_cnt;
-
+        Key_HandleEvent();
         /* 原有调试输出（可保留或删除） */
         // UART2_SendString("UART2_Hello World!\r\n");
-        Printf("cnt: %d\n", g_enc_cnt);
-        // Printf("[MB] rx_len=%d addr=%02X fc=%02X\r\n", rx_len, rx_buf[0], rx_buf[1]);
+        Printf("enc: %d\n", g_enc_cnt);
         if (disp_flag)
         {
             disp_flag = 0;
@@ -91,6 +92,7 @@ void main(void)
             OLED_BuffShowNum(48, 2, ms_tick, 0);
             OLED_BuffShow();
         }
+        
     }
 }
 
@@ -157,7 +159,7 @@ void Timer0_ISR(void) interrupt 1
 
     /* [MODBUS] 3.5字符超时检测 */
     Modbus_TimerTick();
-
+    Key_Scan();
     /* 编码器采样（每10ms） */
     if (ms_tick % 10 == 0)
     {

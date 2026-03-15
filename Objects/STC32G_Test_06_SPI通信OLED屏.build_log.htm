@@ -19,15 +19,11 @@ CPU DLL:         S251.DLL V3.129.0.0
 Dialog DLL:      DCORE51.DLL V2.81.6.0 
 <h2>Project:</h2>
 D:\2025\STC\DC Motor Position Control\Code\STC32G_Project_06_SPI\STC32G_Test_06_SPI通信OLED屏.uvproj
-Project File Date:  03/14/2026
+Project File Date:  03/15/2026
 
 <h2>Output:</h2>
 Build target 'Target 1'
-compiling main.c...
-spi.h(1): warning C323: newline expected, extra characters found
-spi.h(16): warning C323: newline expected, extra characters found
-spi.h(1): warning C323: newline expected, extra characters found
-main.c(115): warning C47: 'next': unreferenced local variable
+compiling key.c...
 linking...
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_BuffShowCircle/oled
@@ -38,8 +34,6 @@ linking...
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_BuffShowChar32/oled
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
-    NAME:    OLED_LightSet/oled
-*** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_BuffShowRectangle/oled
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    OLED_DrawBMP/oled
@@ -49,6 +43,10 @@ linking...
     NAME:    UART2_SendString/uart
 *** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
     NAME:    UART2_ReadByte/uart
+*** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
+    NAME:    Key_Init/key
+*** WARNING L57: UNCALLED FUNCTION, IGNORED FOR OVERLAY PROCESS
+    NAME:    Key_IsPressed/key
 *** WARNING L15: MULTIPLE CALL TO FUNCTION
     NAME:    Printf/uart
     CALLER1: UART2_ISR/main
@@ -57,13 +55,9 @@ linking...
     NAME:    VSPRINTF/VSPRINTF
     CALLER1: UART2_ISR/main
     CALLER2: ?C_C51STARTUP?3
-*** WARNING L25: DATA TYPES DIFFERENT
-    SYMBOL:  SPI_Init
-    MODULE:  .\Objects\oled.obj (oled)
-   DEFINED:  .\Objects\spi.obj (spi)
-Program Size: data=8.3 edata+hdata=879 xdata=1047 const=117 code=12658
+Program Size: data=8.3 edata+hdata=921 xdata=1047 const=349 code=13619
 creating hex file from ".\Objects\STC32G_Test_06_SPI通信OLED屏"...
-".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 17 Warning(s).
+".\Objects\STC32G_Test_06_SPI通信OLED屏" - 0 Error(s), 13 Warning(s).
 Build Time Elapsed:  00:00:01
 </pre>
 </body>
