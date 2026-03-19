@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 1   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:36:42  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE timer
@@ -66,7 +66,7 @@ stmt  level    source
    56   1          // ARR = PWM_ARR = 3317（见 main.h，边沿对齐10kHz）
    57   1          // 实际PWM频率 = FOSC / ARR = 33177600 / 3317 = 10kHz
    58   1          PWMA_ARRH = (PWM_ARR) >> 8;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 2   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:36:42  PAGE 2   
 
    59   1          PWMA_ARRL = (PWM_ARR) & 0xFF;
    60   1      
@@ -134,7 +134,7 @@ stmt  level    source
   122   1          P_SW2 |= 0x80;
   123   1          PWMA_ENO = 0x03;
   124   1          P_SW2 &= ~0x80;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 3   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:36:42  PAGE 3   
 
   125   1      }
   126          
@@ -167,58 +167,59 @@ stmt  level    source
   153   1          PWMB_CNTRL  = 0x00;
   154   1      
   155   1          // ===== 关键：输入捕获模式配置 =====
-  156   1          // CCMR1: IC1F[7:4] = 0011(滤波), CC1S[1:0] = 01(TI1输入)
-  157   1          // = 0011_0001 = 0x31
-  158   1          PWMB_CCMR1  = 0x31;        // TI1输入，滤波4时钟
-  159   1          
-  160   1          // CCMR2: IC2F[7:4] = 0011(滤波), CC2S[1:0] = 01(TI2输入)  
-  161   1          // = 0011_0001 = 0x31
-  162   1          PWMB_CCMR2  = 0x31;        // TI2输入，滤波4时钟
-  163   1       
-  164   1          // ===== 编码器模式：双边沿计数 =====
-  165   1          // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
-  166   1          PWMB_SMCR   = 0x03;
-  167   1       
-  168   1          // ===== 极性配置 =====
-  169   1          // CC1E=1, CC1P=0, CC2E=1, CC2P=0
-  170   1          // 这样可以正确检测方向
-  171   1          // CCER1 = 0000_0101 = 0x05
-  172   1          // CCER2 = 0000_0101 = 0x05
-  173   1          PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
-  174   1          PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
-  175   1          
-  176   1          // 禁用中断（轮询模式）
-  177   1          PWMB_IER    = 0x00;
-  178   1          
-  179   1          // 启动计数器
-  180   1          PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
-  181   1      
-  182   1          P_SW2 &= ~0x80;
-  183   1          EAXFR = 0;
-  184   1      }
-  185          
-  186          int Encoder_Read(void)
-  187          {
-  188   1          int cnt;
-  189   1          unsigned int raw;
-  190   1          
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 4   
+  156   1          // CCMR1: IC1F[7:4] = 1111(最大滤波 f/32×N=8 ≈7.7us), CC1S[1:0] = 01(TI1输入)
+  157   1          // = 1111_0001 = 0xF1
+  158   1          // 注：滤波从0x31(0.24us)提升到0xF1(7.7us)，用于抑制10kHz PWM开关噪声干扰
+  159   1          PWMB_CCMR1  = 0xF1;        // TI1输入，最大滤波（7.7us），抑制PWM噪声
+  160   1      
+  161   1          // CCMR2: IC2F[7:4] = 1111, CC2S[1:0] = 01(TI2输入)
+  162   1          // = 1111_0001 = 0xF1
+  163   1          PWMB_CCMR2  = 0xF1;        // TI2输入，最大滤波（7.7us），抑制PWM噪声
+  164   1       
+  165   1          // ===== 编码器模式：双边沿计数 =====
+  166   1          // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
+  167   1          PWMB_SMCR   = 0x03;
+  168   1       
+  169   1          // ===== 极性配置 =====
+  170   1          // CC1E=1, CC1P=0, CC2E=1, CC2P=0
+  171   1          // 这样可以正确检测方向
+  172   1          // CCER1 = 0000_0101 = 0x05
+  173   1          // CCER2 = 0000_0101 = 0x05
+  174   1          PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
+  175   1          PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
+  176   1          
+  177   1          // 禁用中断（轮询模式）
+  178   1          PWMB_IER    = 0x00;
+  179   1          
+  180   1          // 启动计数器
+  181   1          PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
+  182   1      
+  183   1          P_SW2 &= ~0x80;
+  184   1          EAXFR = 0;
+  185   1      }
+  186          
+  187          int Encoder_Read(void)
+  188          {
+  189   1          int cnt;
+  190   1          unsigned int raw;
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:36:42  PAGE 4   
 
-  191   1          P_SW2 |= 0x80;
-  192   1          raw  = (unsigned int)PWMB_CNTRH << 8;
-  193   1          raw |= PWMB_CNTRL;
-  194   1          P_SW2 &= ~0x80;
-  195   1          
-  196   1          // 转换为有符号16位整数
-  197   1          // 如果最高位为1，则为负数
-  198   1          if (raw & 0x8000) {
-  199   2              cnt = -(int)(0x10000 - raw);  // 补码转换
-  200   2          } else {
-  201   2              cnt = (int)raw;
-  202   2          }
-  203   1          
-  204   1          return cnt;
-  205   1      }
+  191   1          
+  192   1          P_SW2 |= 0x80;
+  193   1          raw  = (unsigned int)PWMB_CNTRH << 8;
+  194   1          raw |= PWMB_CNTRL;
+  195   1          P_SW2 &= ~0x80;
+  196   1          
+  197   1          // 转换为有符号16位整数
+  198   1          // 如果最高位为1，则为负数
+  199   1          if (raw & 0x8000) {
+  200   2              cnt = -(int)(0x10000 - raw);  // 补码转换
+  201   2          } else {
+  202   2              cnt = (int)raw;
+  203   2          }
+  204   1          
+  205   1          return cnt;
+  206   1      }
 
 
 Module Information          Static   Overlayable

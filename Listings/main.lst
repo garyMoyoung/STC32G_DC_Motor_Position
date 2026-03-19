@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 1   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE main
@@ -66,7 +66,7 @@ stmt  level    source
    55           * ── 参数校准方法 ─────────────────────────�
              -��────────────────────────────────
    56           *   1. 上电后转动输出轴整整 N 圈（如 N=1）
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 2   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 2   
 
    57           *   2. 通过 Modbus 读 Encoder_Count（0x0002/0x0003）得到累计脉冲数 P
    58           *   3. ENC_PPR_OUTPUT_实际 = P / N
@@ -103,11 +103,11 @@ stmt  level    source
    88           * 判断方法：手动给一个正转 PWM（模式2写 Duty < PWM_MID），若串口 dEnc 为负值则�
              -��为 -1
    89           */
-   90          #define ENC_DIR             (-1)    /* 当前编码器相序与电机正转方向相反 */
+   90          #define ENC_DIR             (1)    /* 当前编码器相序与电机正转方向相反 */
    91          
    92          /* 速度滑动平均窗口（样本数），增大可减少抖动，减小可提升响应 */
    93          #define SPEED_AVG_N         4
-   94           
+   94          
    95          /*=============================================================================
    96           * 全局状态变量
    97           *===========================================================================*/
@@ -134,7 +134,7 @@ stmt  level    source
   118          volatile bit  debug_flag = 0;       /* 50ms 调试打印标志 */
   119          volatile unsigned int ms_tick   = 0;
   120          volatile unsigned int test_pwmb = 0;
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 3   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 3   
 
   121          unsigned int  g_pwm_duty = 0;       /* 当前 PWM 占空比（Motor_ControlUpdate 更新） */
   122          
@@ -202,7 +202,7 @@ stmt  level    source
   183           * Modbus_SyncRegs
   184           * 主循环每轮调用一次：
   185           *   - 把最新运行状态刷新到只读寄存器
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 4   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 4   
 
   186           *   - 把上位机写入的可写寄存器取回到控制变量
   187           *===========================================================================*/
@@ -270,7 +270,7 @@ stmt  level    source
   249   1          long         duty_l;
   250   1          unsigned int pwm_duty = PWM_MID;    /* 默认停车中点 */
   251   1      
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 5   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 5   
 
   252   1          /* Motor_Enable 线圈（bit0）：未使能时关闭PWM输出并复位PID */
   253   1          if (!(modbus_coils & (1 << 0)))
@@ -338,7 +338,7 @@ stmt  level    source
   315   3                      {
   316   4                          g_status_flags &= ~(1 << 0);
   317   4                      }
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 6   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 6   
 
   318   3                  }
   319   2      
@@ -406,7 +406,7 @@ stmt  level    source
   381   1          P6M1 = 0x00;   P6M0 = 0x00;
   382   1          P7M1 = 0x00;   P7M0 = 0x00;
   383   1      
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 7   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 7   
 
   384   1          P2M0 |=  0x2F;
   385   1          P2M1 &= ~0x2F;
@@ -474,7 +474,7 @@ stmt  level    source
   447   1          Printf("Debug: T(ms) Set Spd dEnc Duty\n");
   448   1          Printf("======================\n");
   449   1      
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 8   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 8   
 
   450   1          /* OLED 初始化：只写一次静态标签 */
   451   1          OLED_Init();
@@ -503,7 +503,7 @@ stmt  level    source
   474   3                  OLED_BuffShowNum(32, 2, (long)(g_motor_angle / 10), 0);
   475   3                  OLED_BuffShow();
   476   3              }
-  477   2      
+  477   2       
   478   2              /* 6. 串口调试打印（每50ms）
   479   2               * 字段：
   480   2               *   T    = 时间戳 ms
@@ -521,155 +521,156 @@ stmt  level    source
   492   2              if (debug_flag)
   493   2              {
   494   3                  debug_flag = 0;
-  495   3                  Printf("T:%u Set:%d Spd:%d dEnc:%d Duty:%u Ang:%d\n",
-  496   3                         ms_tick,
-  497   3                         g_set_speed,
-  498   3                         g_motor_speed,
-  499   3                         g_enc_delta,
-  500   3                         g_pwm_duty,
-  501   3                         g_motor_angle / 10);
-  502   3              }
-  503   2          }
-  504   1      }
+  495   3                  Printf("Set:Spd:dEnc:Duty:Ang:enc: %d, %d, %d, %u, %d, %d\n",
+  496   3                         g_set_speed,
+  497   3                         g_motor_speed,
+  498   3                         g_enc_delta,
+  499   3                         g_pwm_duty,
+  500   3                         g_motor_angle / 10,
+  501   3                         g_enc_total
+  502   3                      );
+  503   3              }
+  504   2          }
+  505   1      }
 *** WARNING C47 IN LINE 393 OF main.c: 'k': unreferenced local variable
-  505          
-  506          /*=============================================================================
-  507           * UART1 中断（调试串口）
-  508           *===========================================================================*/
-  509          void UART1_ISR(void) interrupt 4
-  510          {
-  511   1          unsigned char dat;
-  512   1          if (RI)
-  513   1          {
-  514   2              RI  = 0;
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 9   
+  506          
+  507          /*=============================================================================
+  508           * UART1 中断（调试串口）
+  509           *===========================================================================*/
+  510          void UART1_ISR(void) interrupt 4
+  511          {
+  512   1          unsigned char dat;
+  513   1          if (RI)
+  514   1          {
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 9   
 
-  515   2              dat = SBUF;
-  516   2          }
-  517   1          if (TI)
-  518   1          {
-  519   2              TI = 0;
-  520   2          }
-  521   1      }
-  522          
-  523          /*=============================================================================
-  524           * UART2 中断（Modbus RTU）
-  525           *===========================================================================*/
-  526          void UART2_ISR(void) interrupt 8
-  527          {
-  528   1          if (S2CON & 0x01)                   /* S2RI：收到一个字节 */
-  529   1          {
-  530   2              S2CON &= ~0x01;
-  531   2              Modbus_RxByte(S2BUF);          /* 直接送 Modbus 状态机 */
-  532   2          }
-  533   1      
-  534   1          if (S2CON & 0x02)                   /* S2TI：发送完一个字节 */
-  535   1          {
-  536   2              S2CON &= ~0x02;
-  537   2              if (uart2_tx_head != uart2_tx_tail)
-  538   2              {
-  539   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
-  540   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-  541   3              }
-  542   2              else
-  543   2              {
-  544   3                  uart2_tx_busy = 0;
-  545   3              }
-  546   2          }
-  547   1      }
-  548          
-  549          /*=============================================================================
-  550           * Timer0 中断（1ms 时基）
-  551           *===========================================================================*/
-  552          void Timer0_ISR(void) interrupt 1
-  553          {
-  554   1          int enc_now;
-  555   1          int enc_delta;
-  556   1      
-  557   1          ms_tick++;
-  558   1      
-  559   1          /* Modbus 3.5字符超时检测 */
-  560   1          Modbus_TimerTick();
-  561   1      
-  562   1          /* 按键扫描 */
-  563   1          Key_Scan();
-  564   1      
-  565   1          Buzzer_Update();
-  566   1          /* 编码器采样与计算（每10ms执行一次） */
-  567   1          if (ms_tick % 10 == 0)
-  568   1          {
-  569   2              enc_now   = Encoder_Read();
-  570   2              /* 强制 16 位有符号算术，防止编译器用 32 位 int 导致越界错误
-  571   2               * ENC_DIR：修正编码器相序与电机方向的关系（±1），见文件顶部宏定义 */
-  572   2              enc_delta  = (int)(signed short)(enc_now - g_enc_last) * ENC_DIR;
-  573   2              g_enc_last = enc_now;
-  574   2              g_enc_cnt  = enc_now;
-  575   2              g_enc_delta = enc_delta;    /* 保存供调试输出使用（已含方向修正） */
-  576   2      
-  577   2              /* 累计计数（32位，不清零） */
-  578   2              g_enc_total += (long)enc_delta;
-  579   2      
-  580   2              /*
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 10  
+  515   2              RI  = 0;
+  516   2              dat = SBUF;
+  517   2          }
+  518   1          if (TI)
+  519   1          {
+  520   2              TI = 0;
+  521   2          }
+  522   1      }
+  523          
+  524          /*=============================================================================
+  525           * UART2 中断（Modbus RTU）
+  526           *===========================================================================*/
+  527          void UART2_ISR(void) interrupt 8
+  528          {
+  529   1          if (S2CON & 0x01)                   /* S2RI：收到一个字节 */
+  530   1          {
+  531   2              S2CON &= ~0x01;
+  532   2              Modbus_RxByte(S2BUF);          /* 直接送 Modbus 状态机 */
+  533   2          }
+  534   1      
+  535   1          if (S2CON & 0x02)                   /* S2TI：发送完一个字节 */
+  536   1          {
+  537   2              S2CON &= ~0x02;
+  538   2              if (uart2_tx_head != uart2_tx_tail)
+  539   2              {
+  540   3                  S2BUF = uart2_tx_buf[uart2_tx_tail];
+  541   3                  uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
+  542   3              }
+  543   2              else
+  544   2              {
+  545   3                  uart2_tx_busy = 0;
+  546   3              }
+  547   2          }
+  548   1      }
+  549          
+  550          /*=============================================================================
+  551           * Timer0 中断（1ms 时基）
+  552           *===========================================================================*/
+  553          void Timer0_ISR(void) interrupt 1
+  554          {
+  555   1          int enc_now;
+  556   1          int enc_delta;
+  557   1      
+  558   1          ms_tick++;
+  559   1      
+  560   1          /* Modbus 3.5字符超时检测 */
+  561   1          Modbus_TimerTick();
+  562   1      
+  563   1          /* 按键扫描 */
+  564   1          Key_Scan();
+  565   1      
+  566   1          Buzzer_Update();
+  567   1          /* 编码器采样与计算（每10ms执行一次） */
+  568   1          if (ms_tick % 10 == 0)
+  569   1          {
+  570   2              enc_now   = Encoder_Read();
+  571   2              /* 强制 16 位有符号算术，防止编译器用 32 位 int 导致越界错误
+  572   2               * ENC_DIR：修正编码器相序与电机方向的关系（±1），见文件顶部宏定义 */
+  573   2              enc_delta  = (int)(signed short)(enc_now - g_enc_last) * ENC_DIR;
+  574   2              g_enc_last = enc_now;
+  575   2              g_enc_cnt  = enc_now;
+  576   2              g_enc_delta = enc_delta;    /* 保存供调试输出使用（已含方向修正） */
+  577   2      
+  578   2              /* 累计计数（32位，不清零） */
+  579   2              g_enc_total += (long)enc_delta;
+  580   2      
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 10  
 
-  581   2               * 速度换算：
-  582   2               *   SPEED_MOTOR_SHAFT 已定义 → 电机轴 rpm（减速箱前）
-  583   2               *                    未定义  → 输出轴 rpm（减速箱后）
-  584   2               *
-  585   2               *   电机轴: speed = enc_delta * 6000 / ENC_PPR_MOTOR  (= /44)
-  586   2               *   输出轴: speed = enc_delta * 6000 / ENC_PPR_OUTPUT (= /2640)
-  587   2               *
-  588   2               *   滑动平均（SPEED_AVG_N 个采样点）减少低速跳变
-  589   2               */
-  590   2              g_speed_acc += (long)enc_delta;
-  591   2              g_speed_idx++;
-  592   2              if (g_speed_idx >= SPEED_AVG_N)
-  593   2              {
-  594   3      #ifdef SPEED_MOTOR_SHAFT
+  581   2              /*
+  582   2               * 速度换算：
+  583   2               *   SPEED_MOTOR_SHAFT 已定义 → 电机轴 rpm（减速箱前）
+  584   2               *                    未定义  → 输出轴 rpm（减速箱后）
+  585   2               *
+  586   2               *   电机轴: speed = enc_delta * 6000 / ENC_PPR_MOTOR  (= /44)
+  587   2               *   输出轴: speed = enc_delta * 6000 / ENC_PPR_OUTPUT (= /2640)
+  588   2               *
+  589   2               *   滑动平均（SPEED_AVG_N 个采样点）减少低速跳变
+  590   2               */
+  591   2              g_speed_acc += (long)enc_delta;
+  592   2              g_speed_idx++;
+  593   2              if (g_speed_idx >= SPEED_AVG_N)
+  594   2              {
+  595   3      #ifdef SPEED_MOTOR_SHAFT
                            g_motor_speed = (int)(g_speed_acc * 6000L / ENC_PPR_MOTOR / SPEED_AVG_N);
                #else
-  597   3                  g_motor_speed = (int)(g_speed_acc * 6000L / ENC_PPR_OUTPUT / SPEED_AVG_N);
-  598   3      #endif
-  599   3                  g_speed_acc = 0;
-  600   3                  g_speed_idx = 0;
-  601   3              }
-  602   2      
-  603   2              /*
-  604   2               * 角度换算（输出轴，0.1° 精度）：
-  605   2               *   angle = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT
-  606   2               *         = (enc_total % 2640) * 3600 / 2640
-  607   2               * 结果范围：0 ~ 3599（对应 0.0° ~ 359.9°）
-  608   2               * 负数取模在C中结果为负，加 ENC_PPR_OUTPUT 修正为正值
-  609   2               */
-  610   2              {
-  611   3                  long rem = g_enc_total % (long)ENC_PPR_OUTPUT;
-  612   3                  if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
-  613   3                  g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
-  614   3              }
-  615   2      
-  616   2              /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
-  617   2              Motor_ControlUpdate();
-  618   2          }
-  619   1      
-  620   1          /* OLED 刷新标志（每20ms） */
-  621   1          if (ms_tick % 20 == 0)
-  622   1          {
-  623   2              disp_flag = 1;
-  624   2          }
-  625   1      
-  626   1          /* 串口调试打印标志（每50ms） */
-  627   1          if (ms_tick % 50 == 0)
-  628   1          {
-  629   2              debug_flag = 1;
-  630   2          }
-  631   1      
-  632   1          if (ms_tick >= 10000) ms_tick = 0;
-  633   1      }
+  598   3                  g_motor_speed = (int)(g_speed_acc * 6000L / ENC_PPR_OUTPUT / SPEED_AVG_N);
+  599   3      #endif
+  600   3                  g_speed_acc = 0;
+  601   3                  g_speed_idx = 0;
+  602   3              }
+  603   2      
+  604   2              /*
+  605   2               * 角度换算（输出轴，0.1° 精度）：
+  606   2               *   angle = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT
+  607   2               *         = (enc_total % 2640) * 3600 / 2640
+  608   2               * 结果范围：0 ~ 3599（对应 0.0° ~ 359.9°）
+  609   2               * 负数取模在C中结果为负，加 ENC_PPR_OUTPUT 修正为正值
+  610   2               */
+  611   2              {
+  612   3                  long rem = g_enc_total % (long)ENC_PPR_OUTPUT;
+  613   3                  if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
+  614   3                  g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
+  615   3              }
+  616   2      
+  617   2              /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
+  618   2              Motor_ControlUpdate();
+  619   2          }
+  620   1      
+  621   1          /* OLED 刷新标志（每20ms） */
+  622   1          if (ms_tick % 20 == 0)
+  623   1          {
+  624   2              disp_flag = 1;
+  625   2          }
+  626   1      
+  627   1          /* 串口调试打印标志（每50ms） */
+  628   1          if (ms_tick % 50 == 0)
+  629   1          {
+  630   2              debug_flag = 1;
+  631   2          }
+  632   1      
+  633   1          if (ms_tick >= 10000) ms_tick = 0;
+  634   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      4571     ------
+  code size            =      4561     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -678,15 +679,15 @@ Module Information          Static   Overlayable
   xdata-const size     =    ------     ------
   edata size           =        85          6
   bit size             =         3     ------
-  ebit size            =    ------     ------
-C251 COMPILER V5.60.0,  main                                                               19/03/26  15:17:28  PAGE 11  
+C251 COMPILER V5.60.0,  main                                                               19/03/26  15:36:42  PAGE 11  
 
+  ebit size            =    ------     ------
   bitaddressable size  =    ------     ------
   ebitaddressable size =    ------     ------
   far data size        =    ------     ------
   huge data size       =    ------     ------
   const size           =    ------     ------
-  hconst size          =       350     ------
+  hconst size          =       358     ------
 End of Module Information.
 
 

@@ -87,11 +87,11 @@
  *
  * 判断方法：手动给一个正转 PWM（模式2写 Duty < PWM_MID），若串口 dEnc 为负值则改为 -1
  */
-#define ENC_DIR             (-1)    /* 当前编码器相序与电机正转方向相反 */
+#define ENC_DIR             (1)    /* 当前编码器相序与电机正转方向相反 */
 
 /* 速度滑动平均窗口（样本数），增大可减少抖动，减小可提升响应 */
 #define SPEED_AVG_N         4
- 
+
 /*=============================================================================
  * 全局状态变量
  *===========================================================================*/
@@ -474,7 +474,7 @@ void main(void)
             OLED_BuffShowNum(32, 2, (long)(g_motor_angle / 10), 0);
             OLED_BuffShow();
         }
-
+ 
         /* 6. 串口调试打印（每50ms）
          * 字段：
          *   T    = 时间戳 ms
@@ -492,13 +492,14 @@ void main(void)
         if (debug_flag)
         {
             debug_flag = 0;
-            Printf("T:%u Set:%d Spd:%d dEnc:%d Duty:%u Ang:%d\n",
-                   ms_tick,
+            Printf("Set:Spd:dEnc:Duty:Ang:enc: %d, %d, %d, %u, %d, %d\n",
                    g_set_speed,
                    g_motor_speed,
                    g_enc_delta,
                    g_pwm_duty,
-                   g_motor_angle / 10);
+                   g_motor_angle / 10,
+                   g_enc_total
+                );
         }
     }
 }
