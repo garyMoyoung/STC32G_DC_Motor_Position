@@ -1,6 +1,16 @@
 #include "key.h"
 #include "uart.h"
+#include "pid.h"
 #include <STC32G.H>
+
+/* Kp/Ki 调节范围 */
+#define KP_MIN   0
+#define KP_MAX   2000
+#define KI_MIN   0
+#define KI_MAX   500
+
+extern PID_t          g_pid_speed;
+extern unsigned char  g_pid_adj_target;
 /*=============================================================================
  * 全局按键对象
  *===========================================================================*/

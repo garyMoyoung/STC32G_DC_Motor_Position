@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 1   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE timer
@@ -66,7 +66,7 @@ stmt  level    source
    56   1          // ARR = PWM_ARR = 3317（见 main.h，边沿对齐10kHz）
    57   1          // 实际PWM频率 = FOSC / ARR = 33177600 / 3317 = 10kHz
    58   1          PWMA_ARRH = (PWM_ARR) >> 8;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 2   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 2   
 
    59   1          PWMA_ARRL = (PWM_ARR) & 0xFF;
    60   1      
@@ -134,7 +134,7 @@ stmt  level    source
   122   1          P_SW2 |= 0x80;
   123   1          PWMA_ENO = 0x03;
   124   1          P_SW2 &= ~0x80;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 3   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 3   
 
   125   1      }
   126          
@@ -202,7 +202,7 @@ stmt  level    source
   188   1          int cnt;
   189   1          unsigned int raw;
   190   1          
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 4   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  15:17:28  PAGE 4   
 
   191   1          P_SW2 |= 0x80;
   192   1          raw  = (unsigned int)PWMB_CNTRH << 8;

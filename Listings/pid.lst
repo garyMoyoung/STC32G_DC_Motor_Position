@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  pid                                                                15/03/26  15:25:55  PAGE 1   
+C251 COMPILER V5.60.0,  pid                                                                19/03/26  14:53:46  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE pid
@@ -9,12 +9,12 @@ COMPILER INVOKED BY: D:\Keil MDK\C251\BIN\C251.EXE pid.c XSMALL INTR2 BROWSE DEB
 stmt  level    source
 
     1          /*==============================================================================
-    2           * pid.c  —  增量式PID控制器实现
+    2           * pid.c  —  位置式PID控制器实现
     3           *
     4           * Kp/Ki/Kd 放大100倍整数存储，计算时再除以100，避免浮点运算。
-    5           * 例如：Kp=1.5 → 传入 150
-    6           *       Ki=0.05 → 传入 5
-    7           *       Kd=0.02 → 传入 2
+    5           * 例如：Kp=2.0 → 传入 200
+    6           *       Ki=0.20 → 传入 20
+    7           *       Kd=0.10 → 传入 10
     8           *==============================================================================*/
     9          
    10          #include "pid.h"
@@ -23,18 +23,18 @@ stmt  level    source
    13           * PID_Init  —  初始化PID参数
    14           * kp/ki/kd : 实际系数×100的整数值
    15           * out_max/min : 输出限幅
-   16           * dead_band   : 死区，误差绝对值小于此值时输出不变
+   16           * dead_band   : 死区，误差绝对值小于等于此值时输出为0
    17           *===========================================================================*/
    18          void PID_Init(PID_t *pid,
    19                        int kp, int ki, int kd,
    20                        long out_max, long out_min,
    21                        int dead_band)
    22          {
-   23   1          pid->Kp       = kp;
-   24   1          pid->Ki       = ki;
-   25   1          pid->Kd       = kd;
-   26   1          pid->out_max  = out_max;
-   27   1          pid->out_min  = out_min;
+   23   1          pid->Kp        = kp;
+   24   1          pid->Ki        = ki;
+   25   1          pid->Kd        = kd;
+   26   1          pid->out_max   = out_max;
+   27   1          pid->out_min   = out_min;
    28   1          pid->dead_band = dead_band;
    29   1          PID_Reset(pid);
    30   1      }
@@ -44,68 +44,76 @@ stmt  level    source
    34           *===========================================================================*/
    35          void PID_Reset(PID_t *pid)
    36          {
-   37   1          pid->e0     = 0;
-   38   1          pid->e1     = 0;
-   39   1          pid->e2     = 0;
-   40   1          pid->output = 0;
-   41   1      }
-   42          
-   43          /*=============================================================================
-   44           * PID_Calc  —  增量式PID计算，每个控制周期调用一次
-   45           *
-   46           * 参数：
-   47           *   setpoint : 目标值
-   48           *   feedback : 反馈值（实际值）
-   49           *
-   50           * 返回：
-   51           *   本次累计输出值（已限幅）
-   52           *
-   53           * 计算过程（Kp/Ki/Kd均已×100存储，最后÷100还原）：
-   54           *   delta_u = Kp*(e0-e1) + Ki*e0 + Kd*(e0-2*e1+e2)
-   55           *   u += delta_u / 100
-   56           *===========================================================================*/
-   57          long PID_Calc(PID_t *pid, int setpoint, int feedback)
-   58          {
-C251 COMPILER V5.60.0,  pid                                                                15/03/26  15:25:55  PAGE 2   
+   37   1          pid->e_prev   = 0;
+   38   1          pid->integral = 0;
+   39   1          pid->output   = 0;
+   40   1      }
+   41          
+   42          /*=============================================================================
+   43           * PID_Calc  —  位置式PID计算，每个控制周期调用一次
+   44           *
+   45           * 参数：
+   46           *   setpoint : 目标值
+   47           *   feedback : 反馈值（实际值）
+   48           *
+   49           * 返回：
+   50           *   本次输出值（已限幅）
+   51           *
+   52           * 计算过程（Kp/Ki/Kd均已×100存储，最后÷100还原）：
+   53           *   u = (Kp*e + Ki*integral + Kd*(e - e_prev)) / 100
+   54           *
+   55           * 抗积分饱和：
+   56           *   当 Ki>0 时，将 integral 限幅在 ±(out_max*100/Ki)，
+   57           *   使积分项贡献不超过输出限幅，防止积分过大导致超调。
+   58           *===========================================================================*/
+C251 COMPILER V5.60.0,  pid                                                                19/03/26  14:53:46  PAGE 2   
 
-   59   1          long delta_u;
-   60   1          int  err;
-   61   1      
-   62   1          /* 计算误差 */
-   63   1          err = setpoint - feedback;
+   59          long PID_Calc(PID_t *pid, int setpoint, int feedback)
+   60          {
+   61   1          int  err;
+   62   1          int  derivative;
+   63   1          long output;
    64   1      
-   65   1          /* 死区处理：误差在死区内，保持输出不变 */
-   66   1          if (err < 0) err = -err > pid->dead_band ? setpoint - feedback : 0;
-   67   1          else         err =  err > pid->dead_band ? setpoint - feedback : 0;
-   68   1      
-   69   1          /* 移位历史误差 */
-   70   1          pid->e2 = pid->e1;
-   71   1          pid->e1 = pid->e0;
-   72   1          pid->e0 = err;
-   73   1      
-   74   1          /*
-   75   1           * 增量计算（Kp/Ki/Kd均×100存储，整体再÷100）
-   76   1           * 用 long 防止中间溢出
-   77   1           */
-   78   1          delta_u = (long)pid->Kp * (pid->e0 - pid->e1)
-   79   1                  + (long)pid->Ki *  pid->e0
-   80   1                  + (long)pid->Kd * (pid->e0 - 2 * pid->e1 + pid->e2);
-   81   1          delta_u /= 100;
+   65   1          /* 计算误差 */
+   66   1          err = setpoint - feedback;
+   67   1      
+   68   1          /* 死区处理：误差在死区内时视为0 */
+   69   1          if (err <= pid->dead_band && err >= -pid->dead_band)
+   70   1              err = 0;
+   71   1      
+   72   1          /* 积分累加 */
+   73   1          pid->integral += (long)err;
+   74   1      
+   75   1          /* 抗积分饱和：限制积分累加器，防止积分项溢出或超调 */
+   76   1          if (pid->Ki > 0)
+   77   1          {
+   78   2              long ilimit = pid->out_max * 100L / (long)pid->Ki;
+   79   2              if (pid->integral >  ilimit) pid->integral =  ilimit;
+   80   2              if (pid->integral < -ilimit) pid->integral = -ilimit;
+   81   2          }
    82   1      
-   83   1          /* 累加到输出 */
-   84   1          pid->output += delta_u;
-   85   1      
-   86   1          /* 输出限幅 */
-   87   1          if (pid->output > pid->out_max) pid->output = pid->out_max;
-   88   1          if (pid->output < pid->out_min) pid->output = pid->out_min;
-   89   1      
-   90   1          return pid->output;
-   91   1      }
+   83   1          /* 微分项（基于误差变化率） */
+   84   1          derivative = err - pid->e_prev;
+   85   1          pid->e_prev = err;
+   86   1      
+   87   1          /* 位置式PID输出（Kp/Ki/Kd均×100存储，整体÷100还原） */
+   88   1          output = (  (long)pid->Kp * (long)err
+   89   1                    + (long)pid->Ki * pid->integral
+   90   1                    + (long)pid->Kd * (long)derivative
+   91   1                   ) / 100L;
+   92   1      
+   93   1          /* 输出限幅 */
+   94   1          if (output > pid->out_max) output = pid->out_max;
+   95   1          if (output < pid->out_min) output = pid->out_min;
+   96   1      
+   97   1          pid->output = output;
+   98   1          return output;
+   99   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =       335     ------
+  code size            =       331     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------

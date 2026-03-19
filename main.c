@@ -114,6 +114,7 @@ unsigned int  g_status_flags = 0;
 
 bit           B_Change;
 volatile bit  disp_flag  = 0;
+unsigned char g_pid_adj_target = 0; /* 0=调Kp  1=调Ki */
 volatile bit  debug_flag = 0;       /* 50ms 调试打印标志 */
 volatile unsigned int ms_tick   = 0;
 volatile unsigned int test_pwmb = 0;
@@ -157,9 +158,15 @@ sbit TOG = P0^4;
  *   3. 若超调明显可适当加 Kd
  * 观察串口输出：Set=目标 Spd=实际 Duty=PWM  dEnc=每10ms脉冲数
  */
-#define PID_SPEED_KP    50     /* Kp = 8.00（原2.00，原值太小导致响应慢） */
-#define PID_SPEED_KI    0      /* Ki = 0.30（原0.05） */   //30
-#define PID_SPEED_KD    0       /* Kd = 0.00 */
+/*
+ * PWM_MID = 1658（10kHz 边沿对齐），PID 输出限幅 ±1658
+ * 调参起点：Ki=0 先调 Kp，让电机能平稳跟上目标转速后再加 Ki 消稳态误差
+ *   Kp=200：set=50rpm 首拍 delta_u=100，偏离中点约6%，可驱动电机启动
+ *   Ki=20 ：每拍稳态积分，消除稳态误差
+ */
+#define PID_SPEED_KP    200    /* Kp = 2.00 */
+#define PID_SPEED_KI    0     /* Ki = 0.20，若振荡先清0 */
+#define PID_SPEED_KD    0      /* Kd = 0.00 */
 
 /* 位置环参数（实际值×100） */
 #define PID_ANGLE_KP    80      /* Kp = 0.80 */
