@@ -89,105 +89,141 @@ static void SendException(unsigned char func, unsigned char ex_code)
 /*=============================================================================
  * 处理完整 Modbus 帧
  *===========================================================================*/
+/*=============================================================================
+ * ProcessFrame —— 处理完整 Modbus RTU 帧
+ *
+ * 此函数在 Modbus_Poll() 中被调用，当接收到完整帧时执行。
+ * 主要步骤：
+ *   1. 帧长度和地址校验
+ *   2. CRC 校验
+ *   3. 解析功能码和参数
+ *   4. 根据功能码执行相应操作
+ *   5. 发送响应或异常
+ *
+ * 参数：无（使用全局 rx_buf 和 rx_len）
+ * 返回：无
+ *===========================================================================*/
 static void ProcessFrame(void)
 {
-    unsigned int  crc_recv, crc_calc;
-    unsigned char func;
-    unsigned int  start_addr, quantity;
-    unsigned char byte_cnt;
-    unsigned int  i;
-    unsigned char coil_val;
+    unsigned int  crc_recv, crc_calc;    // 接收到的 CRC 和计算出的 CRC
+    unsigned char func;                  // 功能码
+    unsigned int  start_addr, quantity;  // 起始地址和数量/值
+    unsigned char byte_cnt;              // 数据字节数
+    unsigned int  i;                     // 循环变量
+    unsigned char coil_val;              // 线圈值（0 或 1）
 
-    /* --- 1. 最短帧长检查（至少4字节：地址+功能码+CRC） --- */
+    /* --- 1. 最短帧长检查（至少4字节：地址+功能码+CRC低+CRC高） --- */
     if (rx_len < 4)
-        return;
+        return;  // 帧太短，丢弃
 
     /* --- 2. 地址过滤（0xFF 为广播地址，只执行不回复；目前忽略广播） --- */
     if (rx_buf[0] != MODBUS_SLAVE_ADDR)
-        return;
+        return;  // 不是本机地址，忽略
 
     /* --- 3. CRC 校验 --- */
-    crc_recv = ((unsigned int)rx_buf[rx_len - 1] << 8) | rx_buf[rx_len - 2];
-    crc_calc = CRC16(rx_buf, rx_len - 2);
+    crc_recv = ((unsigned int)rx_buf[rx_len - 1] << 8) | rx_buf[rx_len - 2];  // 提取接收到的 CRC
+    crc_calc = CRC16(rx_buf, rx_len - 2);  // 计算帧数据的 CRC（不含 CRC 字段）
     if (crc_recv != crc_calc)
-        return;                         // CRC 错误，丢弃，不回复
+        return;  // CRC 错误，丢弃，不回复
 
-    func       = rx_buf[1];
-    start_addr = ((unsigned int)rx_buf[2] << 8) | rx_buf[3];
-    quantity   = ((unsigned int)rx_buf[4] << 8) | rx_buf[5];
+    /* --- 4. 解析公共字段 --- */
+    func       = rx_buf[1];  // 功能码
+    start_addr = ((unsigned int)rx_buf[2] << 8) | rx_buf[3];  // 起始地址（高字节在前）
+    quantity   = ((unsigned int)rx_buf[4] << 8) | rx_buf[5];  // 数量或值（高字节在前）
 
-    /* --- 4. 分功能码处理 --- */
+    /* --- 5. 分功能码处理 --- */
     switch (func)
     {
         /*--------------------------------------------------------------------
-         * FC=0x01  Read Coils
+         * FC=0x01  Read Coils（读线圈）
          * 请求帧：[地址][01][起始高][起始低][数量高][数量低][CRC-L][CRC-H]
          * 响应帧：[地址][01][字节数][数据…][CRC-L][CRC-H]
+         *
+         * 功能：读取指定数量的线圈状态，每个线圈占1位
          *------------------------------------------------------------------*/
         case FC_READ_COILS:
+            // 检查数量范围（1-2000）
             if (quantity < 1 || quantity > MODBUS_COIL_NUM)
             {
-                SendException(func, EX_ILLEGAL_DATA_VALUE);
+                SendException(func, EX_ILLEGAL_DATA_VALUE);  // 非法数据值
                 break;
             }
+            // 检查地址范围
             if (start_addr + quantity > MODBUS_COIL_NUM)
             {
-                SendException(func, EX_ILLEGAL_DATA_ADDR);
+                SendException(func, EX_ILLEGAL_DATA_ADDR);  // 非法数据地址
                 break;
             }
+            // 计算需要的字节数（向上取整到字节）
             byte_cnt = (unsigned char)((quantity + 7) / 8);
+            // 构建响应帧
             tx_buf[0] = MODBUS_SLAVE_ADDR;
             tx_buf[1] = FC_READ_COILS;
-            tx_buf[2] = byte_cnt;
-            /* 从 modbus_coils 中提取对应位 */
+            tx_buf[2] = byte_cnt;  // 数据字节数
+            // 从 modbus_coils 中提取对应位，按字节打包
             for (i = 0; i < byte_cnt; i++)
                 tx_buf[3 + i] = (modbus_coils >> (start_addr + i * 8)) & 0xFF;
-            SendResponse(3 + byte_cnt);
+            SendResponse(3 + byte_cnt);  // 发送响应
             break;
 
         /*--------------------------------------------------------------------
-         * FC=0x03  Read Holding Registers
+         * FC=0x03  Read Holding Registers（读保持寄存器）
+         * 请求帧：[地址][03][起始高][起始低][数量高][数量低][CRC-L][CRC-H]
+         * 响应帧：[地址][03][字节数][数据高][数据低]…[CRC-L][CRC-H]
+         *
+         * 功能：读取指定数量的16位保持寄存器
          *------------------------------------------------------------------*/
         case FC_READ_HOLDING_REGS:
+            // 检查数量范围（1-125）
             if (quantity < 1 || quantity > 125)
             {
                 SendException(func, EX_ILLEGAL_DATA_VALUE);
                 break;
             }
+            // 检查地址范围
             if (start_addr + quantity > MODBUS_REG_NUM)
             {
                 SendException(func, EX_ILLEGAL_DATA_ADDR);
                 break;
             }
+            // 计算数据字节数（每个寄存器2字节）
             byte_cnt = (unsigned char)(quantity * 2);
+            // 构建响应帧
             tx_buf[0] = MODBUS_SLAVE_ADDR;
             tx_buf[1] = FC_READ_HOLDING_REGS;
             tx_buf[2] = byte_cnt;
+            // 逐个寄存器打包（大端格式）
             for (i = 0; i < quantity; i++)
             {
-                tx_buf[3 + i * 2]     = (unsigned char)(modbus_regs[start_addr + i] >> 8);
-                tx_buf[3 + i * 2 + 1] = (unsigned char)(modbus_regs[start_addr + i] & 0xFF);
+                tx_buf[3 + i * 2]     = (unsigned char)(modbus_regs[start_addr + i] >> 8);   // 高字节
+                tx_buf[3 + i * 2 + 1] = (unsigned char)(modbus_regs[start_addr + i] & 0xFF); // 低字节
             }
             SendResponse(3 + byte_cnt);
             break;
 
         /*--------------------------------------------------------------------
-         * FC=0x05  Write Single Coil
-         * 写值：0xFF00=ON, 0x0000=OFF
+         * FC=0x05  Write Single Coil（写单个线圈）
+         * 请求帧：[地址][05][地址高][地址低][值高][值低][CRC-L][CRC-H]
+         * 响应帧：原样回显请求帧
+         *
+         * 功能：设置单个线圈状态（0xFF00=ON, 0x0000=OFF）
          *------------------------------------------------------------------*/
         case FC_WRITE_SINGLE_COIL:
+            // 检查地址范围
             if (start_addr >= MODBUS_COIL_NUM)
             {
                 SendException(func, EX_ILLEGAL_DATA_ADDR);
                 break;
             }
-            coil_val = (rx_buf[4] == 0xFF) ? 1 : 0;
+            // 解析线圈值（quantity 字段表示值）
+            coil_val = (rx_buf[4] == 0xFF) ? 1 : 0;  // 0xFF00=ON, 其他=OFF
+            // 更新线圈状态
             if (coil_val)
-                modbus_coils |=  (1 << start_addr);
+                modbus_coils |=  (1 << start_addr);  // 设置位
             else
-                modbus_coils &= ~(1 << start_addr);
+                modbus_coils &= ~(1 << start_addr);  // 清除位
 
-            /* 原样回显请求帧（去掉CRC部分，SendResponse会重新加CRC） */
+            // 原样回显请求帧（去掉CRC部分，SendResponse会重新加CRC）
             tx_buf[0] = rx_buf[0];
             tx_buf[1] = rx_buf[1];
             tx_buf[2] = rx_buf[2];
@@ -198,15 +234,22 @@ static void ProcessFrame(void)
             break;
 
         /*--------------------------------------------------------------------
-         * FC=0x06  Write Single Register
+         * FC=0x06  Write Single Register（写单个寄存器）
+         * 请求帧：[地址][06][地址高][地址低][值高][值低][CRC-L][CRC-H]
+         * 响应帧：原样回显请求帧
+         *
+         * 功能：设置单个16位保持寄存器值
          *------------------------------------------------------------------*/
         case FC_WRITE_SINGLE_REG:
+            // 检查地址范围
             if (start_addr >= MODBUS_REG_NUM)
             {
                 SendException(func, EX_ILLEGAL_DATA_ADDR);
                 break;
             }
-            modbus_regs[start_addr] = quantity;   // quantity 字段即寄存器值
+            // 更新寄存器值（quantity 字段即为新值）
+            modbus_regs[start_addr] = quantity;
+            // 原样回显请求帧
             tx_buf[0] = rx_buf[0];
             tx_buf[1] = rx_buf[1];
             tx_buf[2] = rx_buf[2];
@@ -217,37 +260,45 @@ static void ProcessFrame(void)
             break;
 
         /*--------------------------------------------------------------------
-         * FC=0x10  Write Multiple Registers
+         * FC=0x10  Write Multiple Registers（写多个寄存器）
          * 请求帧：[地址][10][起始高][起始低][数量高][数量低][字节数][数据…][CRC]
+         * 响应帧：[地址][10][起始高][起始低][数量高][数量低][CRC-L][CRC-H]
+         *
+         * 功能：设置多个连续的16位保持寄存器
          *------------------------------------------------------------------*/
         case FC_WRITE_MULTI_REGS:
+            // 检查数量范围（1-123）
             if (quantity < 1 || quantity > 123)
             {
                 SendException(func, EX_ILLEGAL_DATA_VALUE);
                 break;
             }
+            // 检查地址范围
             if (start_addr + quantity > MODBUS_REG_NUM)
             {
                 SendException(func, EX_ILLEGAL_DATA_ADDR);
                 break;
             }
-            byte_cnt = rx_buf[6];
+            // 检查数据字节数是否匹配
+            byte_cnt = rx_buf[6];  // 请求帧中的字节数字段
             if (byte_cnt != quantity * 2)
             {
                 SendException(func, EX_ILLEGAL_DATA_VALUE);
                 break;
             }
+            // 更新多个寄存器（从 rx_buf[7] 开始是数据）
             for (i = 0; i < quantity; i++)
             {
                 modbus_regs[start_addr + i] =
-                    ((unsigned int)rx_buf[7 + i * 2] << 8) | rx_buf[7 + i * 2 + 1];
+                    ((unsigned int)rx_buf[7 + i * 2] << 8) | rx_buf[7 + i * 2 + 1];  // 大端格式
             }
+            // 响应帧：回显起始地址和数量
             tx_buf[0] = MODBUS_SLAVE_ADDR;
             tx_buf[1] = FC_WRITE_MULTI_REGS;
-            tx_buf[2] = rx_buf[2];
-            tx_buf[3] = rx_buf[3];
-            tx_buf[4] = rx_buf[4];
-            tx_buf[5] = rx_buf[5];
+            tx_buf[2] = rx_buf[2];  // 起始地址高
+            tx_buf[3] = rx_buf[3];  // 起始地址低
+            tx_buf[4] = rx_buf[4];  // 数量高
+            tx_buf[5] = rx_buf[5];  // 数量低
             SendResponse(6);
             break;
 
@@ -255,7 +306,7 @@ static void ProcessFrame(void)
          * 不支持的功能码
          *------------------------------------------------------------------*/
         default:
-            SendException(func, EX_ILLEGAL_FUNCTION);
+            SendException(func, EX_ILLEGAL_FUNCTION);  // 非法功能码异常
             break;
     }
 }
@@ -275,6 +326,14 @@ void Modbus_Init(void)
 
 /*-----------------------------------------------------------------------------
  * 每 1ms 在 Timer0_ISR 中调用
+ *
+ * Modbus RTU 使用“3.5 字符时间”作为帧边界判定：
+ *   当总线静默超过 3.5 字符时间（约 0.34ms @115200bps）时，认为一帧已经发送结束。
+ *   本工程定时器以 1ms 为基准，因此取 MODBUS_TIMEOUT_MS = 2（约 2ms）作为安全超时。
+ *
+ * tick 逻辑：
+ *   - 每收到一个字节（Modbus_RxByte）就重置 timeout_cnt
+ *   - 若在超时内不再收到字节，则认为本帧接收完毕，置 rx_done=1 由 Modbus_Poll 处理
  *---------------------------------------------------------------------------*/
 void Modbus_TimerTick(void)
 {

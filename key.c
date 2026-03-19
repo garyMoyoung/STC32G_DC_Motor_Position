@@ -234,7 +234,7 @@ static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
             }
         }
     }
-    
+
     // ========== 按键释放过程 ==========
     else  // GPIO为1（释放）
     {
@@ -280,7 +280,7 @@ static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
             pkey->debounce_cnt = 0;
         }
     }
-    
+
     // ========== 双击定时器倒计时 ==========
     if (pkey->click_timer > 0)
     {
