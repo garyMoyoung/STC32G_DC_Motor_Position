@@ -174,8 +174,8 @@ sbit TOG = P0^4;
 #define PID_SPEED_KD    0      /* Kd = 0.00 */
 
 /* 位置环参数（实际值×100） */
-#define PID_ANGLE_KP    2000      /* Kp = 0.80 */
-#define PID_ANGLE_KI    20       /* Ki = 0.02 */
+#define PID_ANGLE_KP    4000      /* Kp = 0.80 */
+#define PID_ANGLE_KI    0       /* Ki = 0.02 */
 #define PID_ANGLE_KD    0      /* Kd = 0.10 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */

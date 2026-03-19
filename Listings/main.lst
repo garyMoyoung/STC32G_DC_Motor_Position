@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 1   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE main
@@ -66,7 +66,7 @@ stmt  level    source
    55           *   注释掉                 → g_motor_speed 为输出轴转速（减速箱后，转速低）
    56           *
    57           *   注意：切换单位后 PID 速度环参数（Kp/Ki）需要重新调整！
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 2   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 2   
 
    58           *         电机轴转速 ≈ 输出轴转速 × GEAR_RATIO（本例 ×60）
    59           *
@@ -134,7 +134,7 @@ stmt  level    source
   118          unsigned int  g_status_flags = 0;
   119          
   120          bit           B_Change;
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 3   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 3   
 
   121          volatile bit  disp_flag  = 0;
   122          unsigned char g_pid_adj_target = 0; /* 0=调Kp  1=调Ki */
@@ -193,8 +193,8 @@ stmt  level    source
   174          #define PID_SPEED_KD    0      /* Kd = 0.00 */
   175          
   176          /* 位置环参数（实际值×100） */
-  177          #define PID_ANGLE_KP    2000      /* Kp = 0.80 */
-  178          #define PID_ANGLE_KI    20       /* Ki = 0.02 */
+  177          #define PID_ANGLE_KP    4000      /* Kp = 0.80 */
+  178          #define PID_ANGLE_KI    0       /* Ki = 0.02 */
   179          #define PID_ANGLE_KD    0      /* Kd = 0.10 */
   180          
   181          /* 位置环输出限幅（最大目标速度，rpm） */
@@ -202,7 +202,7 @@ stmt  level    source
   183          
   184          static PID_t g_pid_speed;       /* 速度环 PID 实例 */
   185          static PID_t g_pid_angle;       /* 位置环 PID 实例 */
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 4   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 4   
 
   186          
   187          /*=============================================================================
@@ -270,7 +270,7 @@ stmt  level    source
   248           *
   249           * 驱动拓扑：两个半桥（H桥），CCR 决定方向和速度
   250           *   CCR = PWM_MID (1658) → 50% → 停车（两端电压相等，净电压=0）
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 5   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 5   
 
   251           *   CCR < PWM_MID       → 正转（CCR 越小速度越快）
   252           *   CCR > PWM_MID       → 反转（CCR 越大速度越快）
@@ -338,7 +338,7 @@ stmt  level    source
   314   2                  /* 第一级：位置环PID
   315   2                   *   输入：目标角度(0.1°) vs 当前角度(0.1°)
   316   2                   *   输出：目标速度（rpm），带符号，限幅 ±MAX_SPEED_FOR_ANGLE
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 6   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 6   
 
   317   2                   */
   318   2                  speed_sp = (int)PID_Calc(&g_pid_angle, g_set_angle, g_motor_angle);
@@ -406,7 +406,7 @@ stmt  level    source
   380   1          HIRCCR = 0x80;
   381   1          while (!(HIRCCR & 1));
   382   1          CLKSEL = 0x00;
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 7   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 7   
 
   383   1          CLKDIV = 0x00;
   384   1      }
@@ -474,7 +474,7 @@ stmt  level    source
   446   1          modbus_regs[6] = 0;     /* Control_Mode = 速度 */
   447   1          modbus_regs[8] = 0;     /* PWM_Duty_Raw = 0    */
   448   1      
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 8   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 8   
 
   449   1          /* PID参数寄存器初始值（与PID_Init一致，上位机可读取并显示） */
   450   1          modbus_regs[0x0A] = PID_SPEED_KP;   /* Speed_Kp */
@@ -542,7 +542,7 @@ stmt  level    source
   512   2               *   Ang  = 输出轴角度 0.1°
   513   2               *
   514   2               * 调参参考：
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 9   
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 9   
 
   515   2               *   起步时 dEnc 应在1个脉冲内跟上，Spd 应在2~3个打印周期内收敛到 Set
   516   2               *   若 Spd 震荡 → 减小 Kp；若 Spd 响应慢 → 增大 Kp
@@ -610,7 +610,7 @@ stmt  level    source
   577          /*=============================================================================
   578           * Timer0 中断（1ms 时基）
   579           *===========================================================================*/
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 10  
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 10  
 
   580          void Timer0_ISR(void) interrupt 1
   581          {
@@ -678,7 +678,7 @@ stmt  level    source
   643   3                  g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
   644   3              }
   645   2      
-C251 COMPILER V5.60.0,  main                                                               19/03/26  16:38:22  PAGE 11  
+C251 COMPILER V5.60.0,  main                                                               19/03/26  16:49:52  PAGE 11  
 
   646   2              /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
   647   2              Motor_ControlUpdate();
@@ -702,7 +702,7 @@ stmt  level    source
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      4669     ------
+  code size            =      4653     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
