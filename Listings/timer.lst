@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  timer                                                              15/03/26  15:30:07  PAGE 1   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE timer
@@ -63,156 +63,167 @@ stmt  level    source
    53   1          PWMA_PSCRH = 0x00;
    54   1          PWMA_PSCRL = 0x00;
    55   1      
-   56   1          // 设置自动重载值 ARR = PWM_ARR = 1658
-   57   1          // 中央对齐模式下，实际PWM频率 = SYSCLK / (2 * ARR)
-   58   1          // = 33177600 / (2 * 1658) ≈ 10KHz（中央对齐等效20KHz开关频率）
-C251 COMPILER V5.60.0,  timer                                                              15/03/26  15:30:07  PAGE 2   
+   56   1          // ARR = PWM_ARR = 829（见 main.h，中央对齐20kHz）
+   57   1          // 实际PWM频率 = FOSC / (2 * ARR) = 33177600 / 1658 = 20kHz
+   58   1          PWMA_ARRH = (PWM_ARR) >> 8;
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 2   
 
-   59   1          // 若要真正20KHz：ARR = 33177600/20000/2 = 829
-   60   1          #undef  PWM_ARR
-   61   1          #define PWM_ARR   829       // 中央对齐模式下的ARR值
+   59   1          PWMA_ARRL = (PWM_ARR) & 0xFF;
+   60   1      
+   61   1          // ---- 捕获/比较通道1 配置（互补PWM输出）----
    62   1      
-   63   1          PWMA_ARRH = (PWM_ARR) >> 8;
-   64   1          PWMA_ARRL = (PWM_ARR) & 0xFF;
-   65   1      
-   66   1          // ---- 捕获/比较通道1 配置（互补PWM输出）----
+   63   1          // CCMR1：捕获比较模式寄存器1
+   64   1          // OC1M[2:0]=110：PWM模式1（计数值<CCR时输出有效电平）
+   65   1          // OC1PE=1：CCR1预装载使能
+   66   1          PWMA_CCMR1 = 0x68;         // OC1M=110, OC1PE=1
    67   1      
-   68   1          // CCMR1：捕获比较模式寄存器1
-   69   1          // OC1M[2:0]=110：PWM模式1（计数值<CCR时输出有效电平）
-   70   1          // OC1PE=1：CCR1预装载使能
-   71   1          PWMA_CCMR1 = 0x68;         // OC1M=110, OC1PE=1
-   72   1      
-   73   1          // 初始占空比50%：CCR1 = ARR/2
-   74   1          PWMA_CCR1H = (PWM_ARR / 2) >> 8;
-   75   1          PWMA_CCR1L = (PWM_ARR / 2) & 0xFF;
-   76   1      
-   77   1          // CCER1：捕获比较使能寄存器
-   78   1          // CC1E=1：通道1正向输出使能（PWM1P）
-   79   1          // CC1P=0：正向输出高电平有效
-   80   1          // CC1NE=1：通道1互补输出使能（PWM1N）
-   81   1          // CC1NP=0：互补输出高电平有效
-   82   1          PWMA_CCER1 = 0x05;         // CC1E=1, CC1NE=1
-   83   1      
-   84   1          // ---- 死区配置 ----
-   85   1          // BKR：刹车寄存器
-   86   1          // MOE=1：主输出使能（必须置1，否则PWM无输出！）
-   87   1          // OSSR=1：运行模式下关闭状态选择
-   88   1          // OSSI=1：空闲模式下关闭状态选择
-   89   1          PWMA_BKR = 0xC0;           // MOE=1, OSSR=0, OSSI=0, 无刹车
+   68   1          // 初始占空比50%（PWM_MID = 停车中点）
+   69   1          PWMA_CCR1H = PWM_MID >> 8;
+   70   1          PWMA_CCR1L = PWM_MID & 0xFF;
+   71   1      
+   72   1          // CCER1：捕获比较使能寄存器
+   73   1          // CC1E=1：通道1正向输出使能（PWM1P）
+   74   1          // CC1P=0：正向输出高电平有效
+   75   1          // CC1NE=1：通道1互补输出使能（PWM1N）
+   76   1          // CC1NP=0：互补输出高电平有效
+   77   1          PWMA_CCER1 = 0x05;         // CC1E=1, CC1NE=1
+   78   1      
+   79   1          // ---- 死区配置 ----
+   80   1          // BKR：刹车寄存器
+   81   1          // MOE=1：主输出使能（必须置1，否则PWM无输出！）
+   82   1          // OSSR=1：运行模式下关闭状态选择
+   83   1          // OSSI=1：空闲模式下关闭状态选择
+   84   1          PWMA_BKR = 0xC0;           // MOE=1, OSSR=0, OSSI=0, 无刹车
+   85   1      
+   86   1          // DTR：死区时间寄存器
+   87   1          // DTG[7:0]=60：死区时间 = 60 × Tdts，Tdts=1/SYSCLK≈30ns
+   88   1          // 死区 ≈ 60 × 30ns = 1.8us（满足大多数MOS驱动芯片需求）
+   89   1          PWMA_DTR = PWM_DEAD_TIME;
    90   1      
-   91   1          // DTR：死区时间寄存器
-   92   1          // DTG[7:0]=60：死区时间 = 60 × Tdts，Tdts=1/SYSCLK≈30ns
-   93   1          // 死区 ≈ 60 × 30ns = 1.8us（满足大多数MOS驱动芯片需求）
-   94   1          PWMA_DTR = PWM_DEAD_TIME;
+   91   1          // 空闲状态输出：OISR
+   92   1          // OIS1=0：通道1空闲时输出低
+   93   1          // OIS1N=0：互补通道空闲时输出低
+   94   1          PWMA_OISR = 0x00;
    95   1      
-   96   1          // 空闲状态输出：OISR
-   97   1          // OIS1=0：通道1空闲时输出低
-   98   1          // OIS1N=0：互补通道空闲时输出低
-   99   1          PWMA_OISR = 0x00;
-  100   1      
-  101   1          // ---- 使能PWMA计数器 ----
-  102   1          // CR1.CEN=1：启动计数器
-  103   1          PWMA_CR1 |= 0x01;
-  104   1      
-  105   1          // 使能通道1和互补通道1输出
-  106   1          PWMA_ENO = 0x03;           // ENO1P=1, ENO1N=1
-  107   1      
-  108   1          P_SW2 &= ~0x80;
-  109   1      }
-  110          
-  111          
-  112          
-  113          
-  114          
-  115          void PWM_SetDuty(unsigned int duty)
-  116          {
-  117   1          if (duty > PWM_ARR) duty = PWM_ARR;
-  118   1          P_SW2 |= 0x80;
-  119   1          PWMA_CCR1H = duty >> 8;
-  120   1          PWMA_CCR1L = duty & 0xFF;
-  121   1          P_SW2 &= ~0x80;
-  122   1      }
-  123          
-  124          void PWMB_Encoder_Init(void)
-C251 COMPILER V5.60.0,  timer                                                              15/03/26  15:30:07  PAGE 3   
+   96   1          // ---- 使能PWMA计数器 ----
+   97   1          // CR1.CEN=1：启动计数器
+   98   1          PWMA_CR1 |= 0x01;
+   99   1      
+  100   1          // 使能通道1和互补通道1输出
+  101   1          PWMA_ENO = 0x03;           // ENO1P=1, ENO1N=1
+  102   1      
+  103   1          P_SW2 &= ~0x80;
+  104   1      }
+  105          
+  106          
+  107          
+  108          
+  109          
+  110          void PWM_SetDuty(unsigned int duty)
+  111          {
+  112   1          if (duty > PWM_ARR) duty = PWM_ARR;
+  113   1          P_SW2 |= 0x80;
+  114   1          PWMA_CCR1H = duty >> 8;
+  115   1          PWMA_CCR1L = duty & 0xFF;
+  116   1          P_SW2 &= ~0x80;
+  117   1      }
+  118          
+  119          /* 使能 PWM 输出引脚（ENO1P=1, ENO1N=1） */
+  120          void PWM_OutputEnable(void)
+  121          {
+  122   1          P_SW2 |= 0x80;
+  123   1          PWMA_ENO = 0x03;
+  124   1          P_SW2 &= ~0x80;
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 3   
 
-  125          {
-  126   1          EAXFR = 1;
-  127   1          P_SW2 |= 0x80;
-  128   1      
-  129   1          PWMB_ENO    = 0x00;                     // 禁用所有输出
-  130   1          PWMB_PS     = 0x00;                     // 引脚映射到默认位置 (P2.0/P2.1)
-  131   1          
-  132   1          // 预分频设置
-  133   1          PWMB_PSCRH  = 0x00;
-  134   1          PWMB_PSCRL  = 0x00;
-  135   1          
-  136   1          // 自动重装载值（16位，支持有符号）
-  137   1          PWMB_ARRH   = 0xFF;
-  138   1          PWMB_ARRL   = 0xFF;
+  125   1      }
+  126          
+  127          /* 禁用 PWM 输出引脚（两路输出均关闭，引脚回到空闲低电平） */
+  128          void PWM_OutputDisable(void)
+  129          {
+  130   1          P_SW2 |= 0x80;
+  131   1          PWMA_ENO = 0x00;
+  132   1          P_SW2 &= ~0x80;
+  133   1      }
+  134          
+  135          void PWMB_Encoder_Init(void)
+  136          {
+  137   1          EAXFR = 1;
+  138   1          P_SW2 |= 0x80;
   139   1      
-  140   1          // 计数器初值
-  141   1          PWMB_CNTRH  = 0x00;
-  142   1          PWMB_CNTRL  = 0x00;
-  143   1      
-  144   1          // ===== 关键：输入捕获模式配置 =====
-  145   1          // CCMR1: IC1F[7:4] = 0011(滤波), CC1S[1:0] = 01(TI1输入)
-  146   1          // = 0011_0001 = 0x31
-  147   1          PWMB_CCMR1  = 0x31;        // TI1输入，滤波4时钟
-  148   1          
-  149   1          // CCMR2: IC2F[7:4] = 0011(滤波), CC2S[1:0] = 01(TI2输入)  
-  150   1          // = 0011_0001 = 0x31
-  151   1          PWMB_CCMR2  = 0x31;        // TI2输入，滤波4时钟
-  152   1       
-  153   1          // ===== 编码器模式：双边沿计数 =====
-  154   1          // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
-  155   1          PWMB_SMCR   = 0x03;
-  156   1       
-  157   1          // ===== 极性配置 =====
-  158   1          // CC1E=1, CC1P=0, CC2E=1, CC2P=0
-  159   1          // 这样可以正确检测方向
-  160   1          // CCER1 = 0000_0101 = 0x05
-  161   1          // CCER2 = 0000_0101 = 0x05
-  162   1          PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
-  163   1          PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
-  164   1          
-  165   1          // 禁用中断（轮询模式）
-  166   1          PWMB_IER    = 0x00;
-  167   1          
-  168   1          // 启动计数器
-  169   1          PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
-  170   1      
-  171   1          P_SW2 &= ~0x80;
-  172   1          EAXFR = 0;
-  173   1      }
-  174          
-  175          int Encoder_Read(void)
-  176          {
-  177   1          int cnt;
-  178   1          unsigned int raw;
-  179   1          
-  180   1          P_SW2 |= 0x80;
-  181   1          raw  = (unsigned int)PWMB_CNTRH << 8;
-  182   1          raw |= PWMB_CNTRL;
-  183   1          P_SW2 &= ~0x80;
-  184   1          
-  185   1          // 转换为有符号16位整数
-  186   1          // 如果最高位为1，则为负数
-  187   1          if (raw & 0x8000) {
-  188   2              cnt = -(int)(0x10000 - raw);  // 补码转换
-  189   2          } else {
-  190   2              cnt = (int)raw;
-C251 COMPILER V5.60.0,  timer                                                              15/03/26  15:30:07  PAGE 4   
+  140   1          PWMB_ENO    = 0x00;                     // 禁用所有输出
+  141   1          PWMB_PS     = 0x00;                     // 引脚映射到默认位置 (P2.0/P2.1)
+  142   1          
+  143   1          // 预分频设置
+  144   1          PWMB_PSCRH  = 0x00;
+  145   1          PWMB_PSCRL  = 0x00;
+  146   1          
+  147   1          // 自动重装载值（16位，支持有符号）
+  148   1          PWMB_ARRH   = 0xFF;
+  149   1          PWMB_ARRL   = 0xFF;
+  150   1      
+  151   1          // 计数器初值
+  152   1          PWMB_CNTRH  = 0x00;
+  153   1          PWMB_CNTRL  = 0x00;
+  154   1      
+  155   1          // ===== 关键：输入捕获模式配置 =====
+  156   1          // CCMR1: IC1F[7:4] = 0011(滤波), CC1S[1:0] = 01(TI1输入)
+  157   1          // = 0011_0001 = 0x31
+  158   1          PWMB_CCMR1  = 0x31;        // TI1输入，滤波4时钟
+  159   1          
+  160   1          // CCMR2: IC2F[7:4] = 0011(滤波), CC2S[1:0] = 01(TI2输入)  
+  161   1          // = 0011_0001 = 0x31
+  162   1          PWMB_CCMR2  = 0x31;        // TI2输入，滤波4时钟
+  163   1       
+  164   1          // ===== 编码器模式：双边沿计数 =====
+  165   1          // SMS[2:0] = 011（编码器模式3：TI1和TI2都计数）
+  166   1          PWMB_SMCR   = 0x03;
+  167   1       
+  168   1          // ===== 极性配置 =====
+  169   1          // CC1E=1, CC1P=0, CC2E=1, CC2P=0
+  170   1          // 这样可以正确检测方向
+  171   1          // CCER1 = 0000_0101 = 0x05
+  172   1          // CCER2 = 0000_0101 = 0x05
+  173   1          PWMB_CCER1  = 0x05;        // CC1E=1, CC1P=0 (不反相)
+  174   1          PWMB_CCER2  = 0x05;        // CC2E=1, CC2P=0 (不反相)
+  175   1          
+  176   1          // 禁用中断（轮询模式）
+  177   1          PWMB_IER    = 0x00;
+  178   1          
+  179   1          // 启动计数器
+  180   1          PWMB_CR1    = 0x81;        // CEN=1, ARPE=1
+  181   1      
+  182   1          P_SW2 &= ~0x80;
+  183   1          EAXFR = 0;
+  184   1      }
+  185          
+  186          int Encoder_Read(void)
+  187          {
+  188   1          int cnt;
+  189   1          unsigned int raw;
+  190   1          
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 4   
 
-  191   2          }
-  192   1          
-  193   1          return cnt;
-  194   1      }
+  191   1          P_SW2 |= 0x80;
+  192   1          raw  = (unsigned int)PWMB_CNTRH << 8;
+  193   1          raw |= PWMB_CNTRL;
+  194   1          P_SW2 &= ~0x80;
+  195   1          
+  196   1          // 转换为有符号16位整数
+  197   1          // 如果最高位为1，则为负数
+  198   1          if (raw & 0x8000) {
+  199   2              cnt = -(int)(0x10000 - raw);  // 补码转换
+  200   2          } else {
+  201   2              cnt = (int)raw;
+  202   2          }
+  203   1          
+  204   1          return cnt;
+  205   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =       417     ------
+  code size            =       456     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------

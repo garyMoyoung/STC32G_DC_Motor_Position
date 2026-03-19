@@ -53,13 +53,8 @@ void PWM_Init(void)
     PWMA_PSCRH = 0x00;
     PWMA_PSCRL = 0x00;
 
-    // 设置自动重载值 ARR = PWM_ARR = 1658
-    // 中央对齐模式下，实际PWM频率 = SYSCLK / (2 * ARR)
-    // = 33177600 / (2 * 1658) ≈ 10KHz（中央对齐等效20KHz开关频率）
-    // 若要真正20KHz：ARR = 33177600/20000/2 = 829
-    #undef  PWM_ARR
-    #define PWM_ARR   829       // 中央对齐模式下的ARR值
-
+    // ARR = PWM_ARR = 829（见 main.h，中央对齐20kHz）
+    // 实际PWM频率 = FOSC / (2 * ARR) = 33177600 / 1658 = 20kHz
     PWMA_ARRH = (PWM_ARR) >> 8;
     PWMA_ARRL = (PWM_ARR) & 0xFF;
 
@@ -70,9 +65,9 @@ void PWM_Init(void)
     // OC1PE=1：CCR1预装载使能
     PWMA_CCMR1 = 0x68;         // OC1M=110, OC1PE=1
 
-    // 初始占空比50%：CCR1 = ARR/2
-    PWMA_CCR1H = (PWM_ARR / 2) >> 8;
-    PWMA_CCR1L = (PWM_ARR / 2) & 0xFF;
+    // 初始占空比50%（PWM_MID = 停车中点）
+    PWMA_CCR1H = PWM_MID >> 8;
+    PWMA_CCR1L = PWM_MID & 0xFF;
 
     // CCER1：捕获比较使能寄存器
     // CC1E=1：通道1正向输出使能（PWM1P）
@@ -118,6 +113,22 @@ void PWM_SetDuty(unsigned int duty)
     P_SW2 |= 0x80;
     PWMA_CCR1H = duty >> 8;
     PWMA_CCR1L = duty & 0xFF;
+    P_SW2 &= ~0x80;
+}
+
+/* 使能 PWM 输出引脚（ENO1P=1, ENO1N=1） */
+void PWM_OutputEnable(void)
+{
+    P_SW2 |= 0x80;
+    PWMA_ENO = 0x03;
+    P_SW2 &= ~0x80;
+}
+
+/* 禁用 PWM 输出引脚（两路输出均关闭，引脚回到空闲低电平） */
+void PWM_OutputDisable(void)
+{
+    P_SW2 |= 0x80;
+    PWMA_ENO = 0x00;
     P_SW2 &= ~0x80;
 }
 

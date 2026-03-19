@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  uart                                                               15/03/26  15:30:07  PAGE 1   
+C251 COMPILER V5.60.0,  uart                                                               19/03/26  13:23:56  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE uart
@@ -66,7 +66,7 @@ stmt  level    source
    56          
    57          
    58          void UART2_Init(void)
-C251 COMPILER V5.60.0,  uart                                                               15/03/26  15:30:07  PAGE 2   
+C251 COMPILER V5.60.0,  uart                                                               19/03/26  13:23:56  PAGE 2   
 
    59          {
    60   1          // 配置 P4.6 为 RXD2（输入），P4.7 为 TXD2（推挽输出）
@@ -134,7 +134,7 @@ stmt  level    source
   122   2              uart2_tx_busy = 1;
   123   2              S2BUF = uart2_tx_buf[uart2_tx_tail];
   124   2              uart2_tx_tail = (uart2_tx_tail + 1) % UART2_BUF_SIZE;
-C251 COMPILER V5.60.0,  uart                                                               15/03/26  15:30:07  PAGE 3   
+C251 COMPILER V5.60.0,  uart                                                               19/03/26  13:23:56  PAGE 3   
 
   125   2          }
   126   1      }

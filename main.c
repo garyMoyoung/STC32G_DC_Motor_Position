@@ -45,10 +45,25 @@
  *   ENC_PPR_MOTOR  电机轴每转脉冲数      = 11 × 4 = 44
  *   ENC_PPR_OUTPUT 输出轴每转脉冲数      = 44 × 60 = 2640
  *
- * 速度公式（采样周期 10ms）：
- *   speed(rpm) = enc_delta / ENC_PPR_OUTPUT / 0.01s * 60
- *              = enc_delta * 6000 / 2640
- *              = enc_delta * 25 / 11        （整数化，避免浮点）
+ * ── 速度单位选择 ──────────────────────────────────────────────────────────
+ *   定义 SPEED_MOTOR_SHAFT → g_motor_speed 为电机轴转速（减速箱前，转速高）
+ *   注释掉                 → g_motor_speed 为输出轴转速（减速箱后，转速低）
+ *
+ *   注意：切换单位后 PID 速度环参数（Kp/Ki）需要重新调整！
+ *         电机轴转速 ≈ 输出轴转速 × GEAR_RATIO（本例 ×60）
+ *
+ * ── 参数校准方法 ──────────────────────────────────────────────────────────
+ *   1. 上电后转动输出轴整整 N 圈（如 N=1）
+ *   2. 通过 Modbus 读 Encoder_Count（0x0002/0x0003）得到累计脉冲数 P
+ *   3. ENC_PPR_OUTPUT_实际 = P / N
+ *      若 P ≈ 2640 → 参数正确
+ *      若 P ≈ 44   → 编码器在输出轴上，应将 GEAR_RATIO 改为 1
+ *      若比例不对   → 修正 ENC_LINES 或 GEAR_RATIO
+ *   4. 串口调试输出中会实时打印 enc_delta，可用于验证
+ *
+ * ── 速度公式（采样周期 10ms）─────────────────────────────────────────────
+ *   输出轴: speed(rpm) = enc_delta * 6000 / ENC_PPR_OUTPUT
+ *   电机轴: speed(rpm) = enc_delta * 6000 / ENC_PPR_MOTOR
  *
  * 角度公式（输出轴，0.1° 精度）：
  *   angle(0.1°) = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT
@@ -58,6 +73,24 @@
 #define GEAR_RATIO          60
 #define ENC_PPR_MOTOR       (ENC_LINES * ENC_MULT)          /* 44  脉冲/电机转 */
 #define ENC_PPR_OUTPUT      (ENC_PPR_MOTOR * GEAR_RATIO)    /* 2640 脉冲/输出轴转 */
+
+/*
+ * 注释掉下面这行 → 输出轴转速（减速后）
+ * 保留下面这行   → 电机轴转速（减速前，即电机实际转速）
+ */
+/* #define SPEED_MOTOR_SHAFT */   /* 注释 = 输出轴转速；取消注释 = 电机轴转速 */
+
+/*
+ * 编码器方向（决定 g_motor_speed 的正负与电机物理方向的对应关系）
+ *   ENC_DIR =  1：enc_delta 正 = 物理正转（默认）
+ *   ENC_DIR = -1：enc_delta 负 = 物理正转（编码器 A/B 相序与电机方向相反时使用）
+ *
+ * 判断方法：手动给一个正转 PWM（模式2写 Duty < PWM_MID），若串口 dEnc 为负值则改为 -1
+ */
+#define ENC_DIR             (-1)    /* 当前编码器相序与电机正转方向相反 */
+
+/* 速度滑动平均窗口（样本数），增大可减少抖动，减小可提升响应 */
+#define SPEED_AVG_N         4
  
 /*=============================================================================
  * 全局状态变量
@@ -81,10 +114,15 @@ unsigned int  g_status_flags = 0;
 
 bit           B_Change;
 volatile bit  disp_flag  = 0;
+volatile bit  debug_flag = 0;       /* 50ms 调试打印标志 */
 volatile unsigned int ms_tick   = 0;
 volatile unsigned int test_pwmb = 0;
+unsigned int  g_pwm_duty = 0;       /* 当前 PWM 占空比（Motor_ControlUpdate 更新） */
 
-static int g_enc_last = 0;          /* 速度计算：上次采样值 */
+static int g_enc_last  = 0;         /* 速度计算：上次采样值 */
+static long g_speed_acc  = 0;       /* 速度累加器（滑动平均用） */
+static unsigned char g_speed_idx = 0; /* 滑动平均计数 */
+int           g_enc_delta  = 0;     /* 最近一次10ms采样的脉冲数（调试用） */
 
 sbit TOG = P0^4;
 
@@ -112,9 +150,15 @@ sbit TOG = P0^4;
  * 3. 参数调整：修改 PID_SPEED_KP/KI/KD 和 PID_ANGLE_KP/KI/KD 宏即可
  *===========================================================================*/
 
-/* 速度环参数（实际值×100） */
-#define PID_SPEED_KP    200     /* Kp = 2.00 */
-#define PID_SPEED_KI    5       /* Ki = 0.05 */
+/* 速度环参数（实际值×100）
+ * 调参步骤：
+ *   1. Ki=0，逐步加大 Kp 直到速度响应快但不振荡
+ *   2. Kp 固定后逐步加 Ki 消除稳态误差
+ *   3. 若超调明显可适当加 Kd
+ * 观察串口输出：Set=目标 Spd=实际 Duty=PWM  dEnc=每10ms脉冲数
+ */
+#define PID_SPEED_KP    50     /* Kp = 8.00（原2.00，原值太小导致响应慢） */
+#define PID_SPEED_KI    0      /* Ki = 0.30（原0.05） */   //30
 #define PID_SPEED_KD    0       /* Kd = 0.00 */
 
 /* 位置环参数（实际值×100） */
@@ -123,7 +167,7 @@ sbit TOG = P0^4;
 #define PID_ANGLE_KD    10      /* Kd = 0.10 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
-#define MAX_SPEED_FOR_ANGLE   80
+#define MAX_SPEED_FOR_ANGLE   50
 
 static PID_t g_pid_speed;       /* 速度环 PID 实例 */
 static PID_t g_pid_angle;       /* 位置环 PID 实例 */
@@ -175,77 +219,79 @@ static void Modbus_SyncRegs(void)
  *
  * 模式2 手动模式：直接写PWM_Duty_Raw寄存器
  *===========================================================================*/
+/*=============================================================================
+ * Motor_ControlUpdate
+ *
+ * 驱动拓扑：两个半桥（H桥），CCR 决定方向和速度
+ *   CCR = PWM_MID (414) → 50% → 停车（两端电压相等，净电压=0）
+ *   CCR < PWM_MID       → 正转（CCR 越小速度越快）
+ *   CCR > PWM_MID       → 反转（CCR 越大速度越快）
+ *
+ * PID 输出约定（范围 ±PWM_MID）：
+ *   pid_out > 0 → 需要正转  → CCR = PWM_MID - pid_out  < PWM_MID ✓
+ *   pid_out = 0 → 停车      → CCR = PWM_MID                       ✓
+ *   pid_out < 0 → 需要反转  → CCR = PWM_MID - pid_out  > PWM_MID ✓
+ *
+ * g_motor_speed 符号由编码器方向决定：正转 > 0，反转 < 0
+ * g_set_speed   符号表示方向：正值正转，负值反转
+ *===========================================================================*/
 static void Motor_ControlUpdate(void)
 {
-    long  pwm_out;
-    int   speed_setpoint;
-    unsigned int pwm_duty;
+    long         pid_out;
+    int          speed_sp;
+    long         duty_l;
+    unsigned int pwm_duty = PWM_MID;    /* 默认停车中点 */
 
-    /* Motor_Enable 线圈（bit0）：未使能时强制停机并复位PID */
+    /* Motor_Enable 线圈（bit0）：未使能时关闭PWM输出并复位PID */
     if (!(modbus_coils & (1 << 0)))
     {
-        PWM_SetDuty(0);
+        PWM_SetDuty(PWM_MID);       /* 先将占空比置中点，防止重新使能时冲击 */
+        PWM_OutputDisable();        /* 关闭PWM输出引脚（ENO=0x00）           */
+        g_pwm_duty = PWM_MID;
         PID_Reset(&g_pid_speed);
         PID_Reset(&g_pid_angle);
         return;
     }
 
+    /* Motor_Enable=1：确保PWM输出引脚已打开 */
+    PWM_OutputEnable();
+
     switch (g_ctrl_mode)
     {
         /* ── 模式0：速度单环 ── */
         case 0:
-            /*
-             * 速度PID：
-             *   输入：目标rpm vs 当前rpm
-             *   输出：PWM占空比（0 ~ PWM_ARR）
-             * 注意：g_set_speed 为有符号，负值表示反转
-             *   正转：g_set_speed > 0，Dir=正转
-             *   反转：g_set_speed < 0，Dir=反转，取绝对值送PID
-             */
-            if (g_set_speed >= 0)
-            {
-                modbus_coils &= ~(1 << 1);                  /* Dir = 正转 */
-                pwm_out = PID_Calc(&g_pid_speed,
-                                   g_set_speed,
-                                   g_motor_speed);
-            }
-            else
-            {
-                modbus_coils |= (1 << 1);                   /* Dir = 反转 */
-                pwm_out = PID_Calc(&g_pid_speed,
-                                   -g_set_speed,
-                                   (g_motor_speed < 0 ? -g_motor_speed : g_motor_speed));
-            }
-
-            /* 目标为0时主动停机并复位积分 */
             if (g_set_speed == 0)
             {
-                PWM_SetDuty(0);
+                /* 目标为0：停车，复位积分防止下次起步时冲击 */
                 PID_Reset(&g_pid_speed);
+                /* pwm_duty 已默认为 PWM_MID，直接 break */
                 break;
             }
 
-            pwm_duty = (unsigned int)pwm_out;
-            if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
-            PWM_SetDuty(pwm_duty);
+            /*
+             * 带符号速度PID：
+             *   setpoint = g_set_speed（正转 > 0 / 反转 < 0）
+             *   feedback = g_motor_speed（编码器，正转 > 0 / 反转 < 0）
+             *   输出范围 ±PWM_MID
+             *
+             * CCR = PWM_MID - pid_out
+             *   pid_out 正 → CCR 小于中点 → 正转 ✓
+             *   pid_out 负 → CCR 大于中点 → 反转 ✓
+             */
+            pid_out = PID_Calc(&g_pid_speed, g_set_speed, g_motor_speed);
+            duty_l  = (long)PWM_MID - pid_out;
+            if (duty_l < 0L)        duty_l = 0L;
+            if (duty_l > PWM_ARR)   duty_l = PWM_ARR;
+            pwm_duty = (unsigned int)duty_l;
             break;
 
         /* ── 模式1：位置串级（位置环 → 速度环） ── */
         case 1:
-            /*
-             * 第一级：位置环PID
+            /* 第一级：位置环PID
              *   输入：目标角度(0.1°) vs 当前角度(0.1°)
-             *   输出：目标速度（rpm），限幅 ±MAX_SPEED_FOR_ANGLE
-             *
-             * 第二级：速度环PID
-             *   输入：位置环输出速度 vs 当前速度
-             *   输出：PWM占空比
+             *   输出：目标速度（rpm），带符号，限幅 ±MAX_SPEED_FOR_ANGLE
              */
-
-            /* 位置环 */
-            speed_setpoint = (int)PID_Calc(&g_pid_angle,
-                                           g_set_angle,
-                                           g_motor_angle);
+            speed_sp = (int)PID_Calc(&g_pid_angle, g_set_angle, g_motor_angle);
 
             /* 到位判断：误差在±5（0.5°）内认为到位 */
             {
@@ -253,10 +299,9 @@ static void Motor_ControlUpdate(void)
                 if (angle_err < 0) angle_err = -angle_err;
                 if (angle_err <= 5)
                 {
-                    g_status_flags |= (1 << 0);             /* bit0 到位 */
-                    PWM_SetDuty(0);
+                    g_status_flags |= (1 << 0);     /* bit0 到位 */
                     PID_Reset(&g_pid_speed);
-                    /* 位置环保持积分，不复位，防止外力扰动后漂移 */
+                    /* pwm_duty 已默认为 PWM_MID（停车），位置环积分保留 */
                     break;
                 }
                 else
@@ -265,43 +310,38 @@ static void Motor_ControlUpdate(void)
                 }
             }
 
-            /* 根据速度环目标方向控制 Dir 线圈 */
-            if (speed_setpoint >= 0)
-                modbus_coils &= ~(1 << 1);                  /* Dir = 正转 */
-            else
-            {
-                modbus_coils |= (1 << 1);                   /* Dir = 反转 */
-                speed_setpoint = -speed_setpoint;
-            }
-
-            /* 速度环 */
-            pwm_out = PID_Calc(&g_pid_speed,
-                               speed_setpoint,
-                               (g_motor_speed < 0 ? -g_motor_speed : g_motor_speed));
-
-            pwm_duty = (unsigned int)pwm_out;
-            if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
-            PWM_SetDuty(pwm_duty);
+            /* 第二级：速度环PID
+             *   setpoint = speed_sp（位置环输出，带符号）
+             *   feedback = g_motor_speed（带符号）
+             */
+            pid_out  = PID_Calc(&g_pid_speed, speed_sp, g_motor_speed);
+            duty_l   = (long)PWM_MID - pid_out;
+            if (duty_l < 0L)        duty_l = 0L;
+            if (duty_l > PWM_ARR)   duty_l = PWM_ARR;
+            pwm_duty = (unsigned int)duty_l;
             break;
 
-        /* ── 模式2：手动，直接写 PWM_Duty_Raw（0x0008） ── */
+        /* ── 模式2：手动，直接写 PWM_Duty_Raw（0x0008）── */
         case 2:
             PID_Reset(&g_pid_speed);
             PID_Reset(&g_pid_angle);
             pwm_duty = modbus_regs[8];
             if (pwm_duty > PWM_ARR) pwm_duty = PWM_ARR;
-            PWM_SetDuty(pwm_duty);
             break;
 
         default:
-            PWM_SetDuty(0);
             PID_Reset(&g_pid_speed);
             PID_Reset(&g_pid_angle);
             break;
     }
 
-    /* 同步旋转方向到 Status_Flags bit2 */
-    if (modbus_coils & (1 << 1))
+    PWM_SetDuty(pwm_duty);
+    g_pwm_duty = pwm_duty;
+
+    /* 方向状态：从编码器速度符号推断（不再依赖 Dir 线圈）
+     *   bit2 = 1：正转，bit2 = 0：反转或停止
+     */
+    if (g_motor_speed > 0)
         g_status_flags |=  (1 << 2);
     else
         g_status_flags &= ~(1 << 2);
@@ -359,17 +399,22 @@ void main(void)
     Key_Init();
     Buzzer_PlayTone(TONE_POWER_ON);
     /* PID 控制器初始化 */
+    /*
+     * 速度环输出范围 ±PWM_MID（对应 CCR 从 0 到 PWM_ARR）
+     *   pid_out > 0 → duty = PWM_MID - pid_out < PWM_MID → 正转
+     *   pid_out < 0 → duty = PWM_MID - pid_out > PWM_MID → 反转
+     */
     PID_Init(&g_pid_speed,
              PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD,
-             PWM_ARR,   /* 输出上限 = 最大PWM占空比 */
-             0,         /* 输出下限 = 0（方向由线圈控制） */
-             2);        /* 死区 = 2rpm */
+             (long)PWM_MID,    /* 输出上限 */
+             -(long)PWM_MID,   /* 输出下限 */
+             0);               /* 死区 = 2rpm */
 
     PID_Init(&g_pid_angle,
              PID_ANGLE_KP, PID_ANGLE_KI, PID_ANGLE_KD,
              MAX_SPEED_FOR_ANGLE,   /* 输出上限（rpm） */
              -MAX_SPEED_FOR_ANGLE,  /* 输出下限（rpm） */
-             5);        /* 死区 = 5（对应0.5°） */
+             0);        /* 死区 = 5（对应0.5°） */
 
     /* 可写寄存器初始值 */
     modbus_regs[4] = 0;     /* Set_Speed  = 0 rpm  */
@@ -379,6 +424,21 @@ void main(void)
 
     /* Motor_Enable 线圈默认关闭，等上位机显式使能 */
     modbus_coils = 0x00;
+
+    /* ── 上电初始化信息打印 ── */
+    Printf("===== Motor Init =====\n");
+    Printf("Enc: lines=%d x%d gear=%d PPR_out=%d\n",
+           ENC_LINES, ENC_MULT, GEAR_RATIO, ENC_PPR_OUTPUT);
+#ifdef SPEED_MOTOR_SHAFT
+    Printf("Speed unit: motor shaft rpm\n");
+#else
+    Printf("Speed unit: output shaft rpm\n");
+#endif
+    Printf("AVG_N=%d  PWM_ARR=%d\n", SPEED_AVG_N, PWM_ARR);
+    Printf("PID spd: Kp=%d Ki=%d Kd=%d\n",
+           PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD);
+    Printf("Debug: T(ms) Set Spd dEnc Duty\n");
+    Printf("======================\n");
 
     /* OLED 初始化：只写一次静态标签 */
     OLED_Init();
@@ -399,24 +459,39 @@ void main(void)
         /* 3. 按键处理 */
         Key_HandleEvent();
 
-        /* 5. OLED 刷新（每20ms由 Timer0 置 disp_flag） */
+        /* 5. OLED 刷新（每20ms） */
         if (disp_flag)
         {
             disp_flag = 0;
-            /* 显示当前转速（rpm） */
             OLED_BuffShowNum(32, 0, (long)g_motor_speed, 0);
-            /* 显示当前角度（整数°，0.1°单位除以10） */
             OLED_BuffShowNum(32, 2, (long)(g_motor_angle / 10), 0);
-
             OLED_BuffShow();
+        }
 
-            /* 调试输出随 OLED 刷新节奏（20ms一次），不在主循环每轮打印 */
-            Printf("Angle: Spd: Enc: Flg:%d.%d°, %d, %ld, %d\n",
-                   g_motor_angle / 10,                              /* 角度整数部分 */
-                   (g_motor_angle % 10 >= 0) ? (g_motor_angle % 10) : (-(g_motor_angle % 10)),  /* 角度小数部分绝对值 */
+        /* 6. 串口调试打印（每50ms）
+         * 字段：
+         *   T    = 时间戳 ms
+         *   Set  = 目标转速 rpm
+         *   Spd  = 实际转速 rpm（滑动平均后）
+         *   dEnc = 最近10ms采样的原始脉冲数（观察编码器是否正常计数）
+         *   Duty = 当前PWM占空比（0~PWM_ARR=%d）
+         *   Ang  = 输出轴角度 0.1°
+         *
+         * 调参参考：
+         *   起步时 dEnc 应在1个脉冲内跟上，Spd 应在2~3个打印周期内收敛到 Set
+         *   若 Spd 震荡 → 减小 Kp；若 Spd 响应慢 → 增大 Kp
+         *   若稳态误差大 → 增大 Ki
+         */
+        if (debug_flag)
+        {
+            debug_flag = 0;
+            Printf("T:%u Set:%d Spd:%d dEnc:%d Duty:%u Ang:%d\n",
+                   ms_tick,
+                   g_set_speed,
                    g_motor_speed,
-                   g_enc_total,
-                   g_status_flags);
+                   g_enc_delta,
+                   g_pwm_duty,
+                   g_motor_angle / 10);
         }
     }
 }
@@ -485,21 +560,38 @@ void Timer0_ISR(void) interrupt 1
     if (ms_tick % 10 == 0)
     {
         enc_now   = Encoder_Read();
-        enc_delta = enc_now - g_enc_last;
+        /* 强制 16 位有符号算术，防止编译器用 32 位 int 导致越界错误
+         * ENC_DIR：修正编码器相序与电机方向的关系（±1），见文件顶部宏定义 */
+        enc_delta  = (int)(signed short)(enc_now - g_enc_last) * ENC_DIR;
         g_enc_last = enc_now;
         g_enc_cnt  = enc_now;
- 
+        g_enc_delta = enc_delta;    /* 保存供调试输出使用（已含方向修正） */
+
         /* 累计计数（32位，不清零） */
         g_enc_total += (long)enc_delta;
- 
+
         /*
-         * 速度换算（输出轴 rpm）：
-         *   speed = enc_delta * 6000 / ENC_PPR_OUTPUT
-         *         = enc_delta * 6000 / 2640
-         *         = enc_delta * 25 / 11
-         * 用 long 中间值防止 int 溢出（最大转速100rpm时 enc_delta≈4.4）
+         * 速度换算：
+         *   SPEED_MOTOR_SHAFT 已定义 → 电机轴 rpm（减速箱前）
+         *                    未定义  → 输出轴 rpm（减速箱后）
+         *
+         *   电机轴: speed = enc_delta * 6000 / ENC_PPR_MOTOR  (= /44)
+         *   输出轴: speed = enc_delta * 6000 / ENC_PPR_OUTPUT (= /2640)
+         *
+         *   滑动平均（SPEED_AVG_N 个采样点）减少低速跳变
          */
-        g_motor_speed = (int)((long)enc_delta * 6000L / ENC_PPR_OUTPUT);
+        g_speed_acc += (long)enc_delta;
+        g_speed_idx++;
+        if (g_speed_idx >= SPEED_AVG_N)
+        {
+#ifdef SPEED_MOTOR_SHAFT
+            g_motor_speed = (int)(g_speed_acc * 6000L / ENC_PPR_MOTOR / SPEED_AVG_N);
+#else
+            g_motor_speed = (int)(g_speed_acc * 6000L / ENC_PPR_OUTPUT / SPEED_AVG_N);
+#endif
+            g_speed_acc = 0;
+            g_speed_idx = 0;
+        }
 
         /*
          * 角度换算（输出轴，0.1° 精度）：
@@ -522,6 +614,12 @@ void Timer0_ISR(void) interrupt 1
     if (ms_tick % 20 == 0)
     {
         disp_flag = 1;
+    }
+
+    /* 串口调试打印标志（每50ms） */
+    if (ms_tick % 50 == 0)
+    {
+        debug_flag = 1;
     }
 
     if (ms_tick >= 10000) ms_tick = 0;
