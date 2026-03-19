@@ -317,7 +317,12 @@ static void Motor_ControlUpdate(void)
              */
             speed_sp = (int)PID_Calc(&g_pid_angle, g_set_angle, g_motor_angle);
 
-            /* 到位判断：误差在±5（0.5°）内认为到位 */
+            /* 到位判断：误差在±5（0.5°）内设置到位标志，但不停止PID！
+             * PID 会自行将速度收敛到0，由位置环积分维持位置。
+             * 如果强制停车会导致：
+             *   1. 惯性飘移后需要重新启动PID
+             *   2. 速度环积分清零后每次都要从零开始建立
+             */
             {
                 int angle_err = g_set_angle - g_motor_angle;
                 if (angle_err < 0) angle_err = -angle_err;
