@@ -97,6 +97,13 @@
 /* 速度滑动平均窗口（样本数），增大可减少抖动，减小可提升响应 */
 #define SPEED_AVG_N         4
 
+/*
+ * 角度偏移量（0.1° 单位）：
+ *   上电位置 = 60.0°，用户 0° 映射到电机 60°，用户 180° 映射到 240°
+ *   工作范围远离 0°/360° 跳变点
+ */
+#define ANGLE_OFFSET        600     /* 60.0° × 10 = 600 */
+
 /*=============================================================================
  * 全局状态变量
  *===========================================================================*/
@@ -432,7 +439,7 @@ static void OLED_Update(void)
     }
     else if (g_ctrl_mode == 1)
     {
-        sv = (g_set_angle - ANGLE_OFFSET) / 10;   /* 减偏移，显示用户角度 */
+        sv = (g_set_angle) / 10;   /* 减偏移，显示用户角度 */
         sprintf(buf, "%4d deg", sv);
         OLED_BuffShowString(32, 4, buf, 0);
         OLED_BuffShowString(96, 4, "ANG", 1);
@@ -448,7 +455,7 @@ static void OLED_Update(void)
     sv = (int)modbus_regs[4];   /* 目标速度 */
     sprintf(buf, "S:%c%3d", (sv < 0) ? '-' : '+', (sv < 0) ? -sv : sv);
     OLED_BuffShowString(0,  6, buf, (g_key_adj_target == 0) ? 1 : 0);
-    sv = ((int)modbus_regs[5] - ANGLE_OFFSET) / 10;  /* 目标角度（用户视角） */
+    sv = ((int)modbus_regs[5]) / 10;  /* 目标角度（用户视角） */
     sprintf(buf, "A:%3d", sv);
     OLED_BuffShowString(64, 6, buf, (g_key_adj_target == 1) ? 1 : 0);
 

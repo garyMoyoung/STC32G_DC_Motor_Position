@@ -293,10 +293,10 @@ static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
             // 不再重新设置 event = KEY_SINGLE_CLICK！
             // 因为第一次释放时已经发送过单击事件并被主循环处理了，
             // 如果这里再设一次会导致单击跳两次。
-                pkey->click_count = 0;
-            }
+            pkey->click_count = 0;
         }
     }
+}
 
 /*=============================================================================
  * 按键扫描（在 Timer0_ISR 中每 1ms 调用一次）
