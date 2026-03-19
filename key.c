@@ -1,16 +1,48 @@
 #include "key.h"
 #include "uart.h"
 #include "pid.h"
+#include "rs485.h"
 #include <STC32G.H>
 
-/* Kp/Ki 调节范围 */
-#define KP_MIN   0
-#define KP_MAX   2000
-#define KI_MIN   0
-#define KI_MAX   500
+/*=============================================================================
+ * 调节目标（与 main.c 中的 g_key_adj_target 定义一致）
+ *   0 = SetSpd   目标转速（modbus_regs[4]，rpm）
+ *   1 = SetAng   目标角度（modbus_regs[5]，0.1°）
+ *   2 = Kp       速度环 Kp
+ *   3 = Ki       速度环 Ki
+ *===========================================================================*/
+#define ADJ_SET_SPD  0
+#define ADJ_SET_ANG  1
+#define ADJ_KP       2
+#define ADJ_KI       3
+#define ADJ_NUM      4   /* 循环总数 */
+
+/* 各目标调节量限幅 */
+#define SPD_MIN  (-999)
+#define SPD_MAX    999
+#define ANG_MIN  (-3200)    /* 0.1°，对应 ±320° */
+#define ANG_MAX   3200
+#define KP_MIN     0
+#define KP_MAX     2000
+#define KI_MIN     0
+#define KI_MAX     500
+
+/*
+ * 步长表 [目标][0=单击, 1=长按持续, 2=双击]
+ * SetSpd: 1 / 5 / 10 rpm
+ * SetAng: 10 / 50 / 100 (0.1°，即 1° / 5° / 10°)
+ * Kp:     1 / 10 / 100
+ * Ki:     1 / 10 / 50
+ */
+static const int adj_steps[4][3] = {
+    {  1,   5,  10},   /* SetSpd */
+    { 10,  50, 100},   /* SetAng */
+    {  1,  10, 100},   /* Kp     */
+    {  1,  10,  50},   /* Ki     */
+};
 
 extern PID_t          g_pid_speed;
-extern unsigned char  g_pid_adj_target;
+extern unsigned char  g_key_adj_target;
 /*=============================================================================
  * 全局按键对象
  *===========================================================================*/
@@ -354,134 +386,125 @@ unsigned char Key_IsPressed(unsigned char key_id)
     }
 }
 
-static unsigned char last_event1 = KEY_NONE;
-static unsigned char last_event2 = KEY_NONE;
-static unsigned char last_event3 = KEY_NONE;
+/*=============================================================================
+ * Key_AdjustTarget  —  对当前调节目标施加步长 step（正负均可）
+ *===========================================================================*/
+static void Key_AdjustTarget(int step)
+{
+    int sv;
+    switch (g_key_adj_target)
+    {
+        case ADJ_SET_SPD:
+            sv = (int)modbus_regs[4] + step;
+            if (sv > SPD_MAX) sv = SPD_MAX;
+            if (sv < SPD_MIN) sv = SPD_MIN;
+            modbus_regs[4] = (unsigned int)sv;
+            Printf("SetSpd=%d\r\n", sv);
+            break;
+
+        case ADJ_SET_ANG:
+            sv = (int)modbus_regs[5] + step;
+            if (sv > ANG_MAX) sv = ANG_MAX;
+            if (sv < ANG_MIN) sv = ANG_MIN;
+            modbus_regs[5] = (unsigned int)sv;
+            Printf("SetAng=%d(0.1deg)\r\n", sv);
+            break;
+
+        case ADJ_KP:
+            sv = (int)g_pid_speed.Kp + step;
+            if (sv > KP_MAX) sv = KP_MAX;
+            if (sv < KP_MIN) sv = KP_MIN;
+            g_pid_speed.Kp   = (int)sv;
+            modbus_regs[0x0A] = (unsigned int)sv;   /* 同步防止Modbus_SyncRegs覆盖 */
+            Printf("Kp=%d\r\n", sv);
+            break;
+
+        case ADJ_KI:
+            sv = (int)g_pid_speed.Ki + step;
+            if (sv > KI_MAX) sv = KI_MAX;
+            if (sv < KI_MIN) sv = KI_MIN;
+            g_pid_speed.Ki   = (int)sv;
+            modbus_regs[0x0B] = (unsigned int)sv;   /* 同步防止Modbus_SyncRegs覆盖 */
+            Printf("Ki=%d\r\n", sv);
+            break;
+
+        default:
+            break;
+    }
+}
 
 /*=============================================================================
  * 处理所有按键事件（主循环调用）
- * 包含KEY1/KEY2/KEY3的所有事件处理逻辑
- *=============================================================================*/
+ *
+ * KEY1 单击：循环切换调节目标（SetSpd → SetAng → Kp → Ki → SetSpd...）
+ * KEY2 单击：+小步  长按持续：+中步  双击：+大步
+ * KEY3 单击：-小步  长按持续：-中步  双击：-大步
+ *
+ * 步长见 adj_steps[target][0/1/2]
+ *===========================================================================*/
 unsigned char Key_HandleEvent(void)
 {
     unsigned char event;
-    
-    /* ===== KEY1 事件处理 ===== */
+
+    /* ── KEY1：切换调节目标 ── */
     event = Key_GetEvent(1);
-    
-    // 过滤逻辑：如果这帧是双击，则忽略上一帧的单击
-    if (event == KEY_DOUBLE_CLICK && last_event1 == KEY_SINGLE_CLICK)
-    {
-        // 这是双击，不处理单击事件，直接处理双击
-        Printf("[KEY1] Double Click\r\n");
-        // TODO: 添加双击功能代码
-        Key_ClearEvent(1);
-        last_event1 = KEY_DOUBLE_CLICK;
-        return 1;
-    }
-    
-    // 正常流程
     if (event == KEY_SINGLE_CLICK)
     {
-        Printf("[KEY1] Single Click\r\n");
-        // TODO: 添加单击功能代码
+        g_key_adj_target = (g_key_adj_target + 1) % ADJ_NUM;
+        Buzzer_PlayTone(TONE_SINGLE_CLICK);
+        Printf("Adj target: %d\r\n", (int)g_key_adj_target);
         Key_ClearEvent(1);
-        last_event1 = KEY_SINGLE_CLICK;
         return 1;
     }
-    else if (event == KEY_DOUBLE_CLICK)
-    {
-        Printf("[KEY1] Double Click\r\n");
-        // TODO: 添加双击功能代码
-        Key_ClearEvent(1);
-        last_event1 = KEY_DOUBLE_CLICK;
-        return 1;
-    }
-    else if (event == KEY_LONG_PRESS)
-    {
-        Printf("[KEY1] Long Press\r\n");
-        Key_ClearEvent(1);
-        last_event1 = KEY_LONG_PRESS;
-        return 1;
-    }
-    else if (event == KEY_RELEASE)
-    {
-        Printf("[KEY1] Released\r\n");
-        Key_ClearEvent(1);
-        last_event1 = KEY_RELEASE;
-        return 1;
-    }
-    
-    last_event1 = KEY_NONE;
-    
-    /* ===== KEY2 事件处理 ===== */
+    Key_ClearEvent(1);
+
+    /* ── KEY2：增大 ── */
     event = Key_GetEvent(2);
-    
-    if (event == KEY_DOUBLE_CLICK && last_event2 == KEY_SINGLE_CLICK)
-    {
-        Printf("[KEY2] Double Click\r\n");
-        Key_ClearEvent(2);
-        last_event2 = KEY_DOUBLE_CLICK;
-        return 1;
-    }
-    
     if (event == KEY_SINGLE_CLICK)
     {
-        Printf("[KEY2] Single Click\r\n");
+        Key_AdjustTarget(adj_steps[g_key_adj_target][0]);
+        Buzzer_PlayTone(TONE_SINGLE_CLICK);
         Key_ClearEvent(2);
-        last_event2 = KEY_SINGLE_CLICK;
         return 1;
     }
     else if (event == KEY_DOUBLE_CLICK)
     {
-        Printf("[KEY2] Double Click\r\n");
+        Key_AdjustTarget(adj_steps[g_key_adj_target][2]);
+        Buzzer_PlayTone(TONE_DOUBLE_CLICK);
         Key_ClearEvent(2);
-        last_event2 = KEY_DOUBLE_CLICK;
         return 1;
     }
-    else if (event == KEY_LONG_PRESS)
+    else if (event == KEY_PRESSING)
     {
-        Printf("[KEY2] Long Press\r\n");
+        Key_AdjustTarget(adj_steps[g_key_adj_target][1]);
         Key_ClearEvent(2);
-        last_event2 = KEY_LONG_PRESS;
         return 1;
     }
-    
-    last_event2 = KEY_NONE;
-    
-    /* ===== KEY3 事件处理 ===== */
+    Key_ClearEvent(2);
+
+    /* ── KEY3：减小 ── */
     event = Key_GetEvent(3);
-    
-    if (event == KEY_DOUBLE_CLICK && last_event3 == KEY_SINGLE_CLICK)
-    {
-        Printf("[KEY3] Double Click\r\n");
-        Key_ClearEvent(3);
-        last_event3 = KEY_DOUBLE_CLICK;
-        return 1;
-    }
-    
     if (event == KEY_SINGLE_CLICK)
     {
-        Printf("[KEY3] Single Click\r\n");
+        Key_AdjustTarget(-adj_steps[g_key_adj_target][0]);
+        Buzzer_PlayTone(TONE_SINGLE_CLICK);
         Key_ClearEvent(3);
-        last_event3 = KEY_SINGLE_CLICK;
         return 1;
     }
     else if (event == KEY_DOUBLE_CLICK)
     {
-        Printf("[KEY3] Double Click\r\n");
+        Key_AdjustTarget(-adj_steps[g_key_adj_target][2]);
+        Buzzer_PlayTone(TONE_DOUBLE_CLICK);
         Key_ClearEvent(3);
-        last_event3 = KEY_DOUBLE_CLICK;
         return 1;
     }
-    else if (event == KEY_LONG_PRESS)
+    else if (event == KEY_PRESSING)
     {
-        Printf("[KEY3] Long Press\r\n");
+        Key_AdjustTarget(-adj_steps[g_key_adj_target][1]);
         Key_ClearEvent(3);
-        last_event3 = KEY_LONG_PRESS;
         return 1;
     }
-    
-    last_event3 = KEY_NONE;
+    Key_ClearEvent(3);
+
     return 0;
 }

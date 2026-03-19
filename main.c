@@ -119,7 +119,14 @@ unsigned int  g_status_flags = 0;
 
 bit           B_Change;
 volatile bit  disp_flag  = 0;
-unsigned char g_pid_adj_target = 0; /* 0=调Kp  1=调Ki */
+/*
+ * 按键调节目标（KEY1 单击循环切换）：
+ *   0 = 目标转速 SetSpd（modbus_regs[4]，rpm）
+ *   1 = 目标角度 SetAng（modbus_regs[5]，0.1°）
+ *   2 = 速度环 Kp
+ *   3 = 速度环 Ki
+ */
+unsigned char g_key_adj_target = 0;
 volatile bit  debug_flag = 0;       /* 50ms 调试打印标志 */
 volatile unsigned int ms_tick   = 0;
 volatile unsigned int test_pwmb = 0;
@@ -181,8 +188,8 @@ sbit TOG = P0^4;
 /* 位置环输出限幅（最大目标速度，rpm） */
 #define MAX_SPEED_FOR_ANGLE   100
 
-static PID_t g_pid_speed;       /* 速度环 PID 实例 */
-static PID_t g_pid_angle;       /* 位置环 PID 实例 */
+PID_t g_pid_speed;       /* 速度环 PID 实例（非static，key.c 需访问） */
+PID_t g_pid_angle;       /* 位置环 PID 实例 */
 
 /*=============================================================================
  * Modbus_SyncRegs
@@ -193,8 +200,6 @@ static PID_t g_pid_angle;       /* 位置环 PID 实例 */
  *===========================================================================*/
 static void Modbus_SyncRegs(void)
 {
-    unsigned char k;
-
     /* ── 只读寄存器：用最新状态覆盖 ── */
     modbus_regs[0] = (unsigned int)g_motor_angle;          /* Motor_Angle  */
     modbus_regs[1] = (unsigned int)g_motor_speed;          /* Motor_Speed  */
@@ -273,7 +278,10 @@ static void Motor_ControlUpdate(void)
         PWM_OutputDisable();        /* 关闭PWM输出引脚（ENO=0x00）           */
         g_pwm_duty = PWM_MID;
         PID_Reset(&g_pid_speed);
-        PID_Reset(&g_pid_angle);
+        /* 注意：角度环积分不清零！
+         * 如果清零，重新使能时位置环要从零开始积分，导致需要反复使能才能到位。
+         * 保留积分器使得重新使能后角度环能立即输出正确的目标速度。
+         */
         return;
     }
 
@@ -342,6 +350,7 @@ static void Motor_ControlUpdate(void)
             /* 第二级：速度环PID
              *   setpoint = speed_sp（位置环输出，带符号）
              *   feedback = g_motor_speed（带符号）
+             * 当位置误差→0时，位置环输出speed_sp→0，速度环自然将电机减速停下
              */
             pid_out  = PID_Calc(&g_pid_speed, speed_sp, g_motor_speed);
             duty_l   = (long)PWM_MID - pid_out;
@@ -374,6 +383,81 @@ static void Motor_ControlUpdate(void)
         g_status_flags |=  (1 << 2);
     else
         g_status_flags &= ~(1 << 2);
+}
+
+/*=============================================================================
+ * OLED_Update  —  每20ms全量刷新屏幕
+ *
+ * 布局（128×64，8×16字体，每行16字符）：
+ *   page 0-1  SPD: ±XXX rpm          [ON/OFF]
+ *   page 2-3  ANG: ±XXX deg
+ *   page 4-5  SET: ±XXX rpm/deg      [SPD/ANG/MAN]
+ *   page 6-7  Kp:XXX   Ki:XXX
+ *   分隔线：pixel row 15 / 31 / 47
+ *===========================================================================*/
+static void OLED_Update(void)
+{
+    char buf[17];   /* 16 chars + '\0'，C51 stack 足够 */
+    int  spd, ang, sv;
+
+    spd = g_motor_speed;
+    ang = g_motor_angle / 10;   /* 0.1° → 整数度 */
+
+    OLED_BuffClear();
+
+    /* ── page 0-1：当前转速（调节目标=0时标签反白） ── */
+    OLED_BuffShowString(0,  0, "SPD:", (g_key_adj_target == 0) ? 1 : 0);
+    sprintf(buf, "%c%3d", (spd < 0) ? '-' : '+', (spd < 0) ? -spd : spd);
+    OLED_BuffShowString(32, 0, buf, 0);
+    OLED_BuffShowString(64, 0, "rpm", 0);
+    if (modbus_coils & (1 << 0))
+        OLED_BuffShowString(104, 0, "ON", 1);
+    else
+        OLED_BuffShowString(100, 0, "OFF", 0);
+
+    /* ── page 2-3：当前角度（调节目标=1时标签反白） ── */
+    OLED_BuffShowString(0,  2, "ANG:", (g_key_adj_target == 1) ? 1 : 0);
+    sprintf(buf, "%c%3d", (ang < 0) ? '-' : '+', (ang < 0) ? -ang : ang);
+    OLED_BuffShowString(32, 2, buf, 0);
+    OLED_BuffShowString(64, 2, "deg", 0);
+
+    /* ── page 4-5：设定值 + 控制模式标签 ── */
+    OLED_BuffShowString(0,  4, "SET:", 0);
+    if (g_ctrl_mode == 0)
+    {
+        sv = g_set_speed;
+        sprintf(buf, "%c%3d rpm", (sv < 0) ? '-' : '+', (sv < 0) ? -sv : sv);
+        OLED_BuffShowString(32, 4, buf, 0);
+        OLED_BuffShowString(96, 4, "SPD", 1);
+    }
+    else if (g_ctrl_mode == 1)
+    {
+        sv = g_set_angle / 10;
+        sprintf(buf, "%c%3d deg", (sv < 0) ? '-' : '+', (sv < 0) ? -sv : sv);
+        OLED_BuffShowString(32, 4, buf, 0);
+        OLED_BuffShowString(96, 4, "ANG", 1);
+    }
+    else
+    {
+        sprintf(buf, "%5u raw", (unsigned int)modbus_regs[8]);
+        OLED_BuffShowString(32, 4, buf, 0);
+        OLED_BuffShowString(96, 4, "MAN", 1);
+    }
+
+    /* ── page 6-7：PID参数（调节目标=2/3时对应参数反白） ── */
+    OLED_BuffShowString(0,  6, "Kp:", (g_key_adj_target == 2) ? 1 : 0);
+    sprintf(buf, "%-4d", g_pid_speed.Kp);
+    OLED_BuffShowString(24, 6, buf, 0);
+    OLED_BuffShowString(64, 6, "Ki:", (g_key_adj_target == 3) ? 1 : 0);
+    sprintf(buf, "%-4d", g_pid_speed.Ki);
+    OLED_BuffShowString(88, 6, buf, 0);
+
+    /* ── 分隔线（最后画，用|=写入不覆盖文字） ── */
+    OLED_BuffShowLine(0, 15, 127, 15);
+    OLED_BuffShowLine(0, 31, 127, 31);
+    OLED_BuffShowLine(0, 47, 127, 47);
+
+    OLED_BuffShow();
 }
 
 /*=============================================================================
@@ -412,8 +496,6 @@ void Sys_init(void)
  *===========================================================================*/
 void main(void)
 {
-    unsigned char k;        /* C51 所有局部变量必须在函数开头声明 */
-
     Sys_init();
     CLK_Init();
     SPI_Init();
@@ -479,12 +561,9 @@ void main(void)
     Printf("Debug: T(ms) Set Spd dEnc Duty\n");
     Printf("======================\n");
 
-    /* OLED 初始化：只写一次静态标签 */
+    /* OLED 初始化，上电先清屏，首帧由 OLED_Update 绘制 */
     OLED_Init();
     OLED_BuffClear();
-    OLED_BuffShow();
-    OLED_BuffShowString(0, 0, "Spd:", 0);   /* 第0行显示转速 */
-    OLED_BuffShowString(0, 2, "Ang:", 0);   /* 第2行显示角度 */
     OLED_BuffShow();
 
     while (1)
@@ -502,9 +581,7 @@ void main(void)
         if (disp_flag)
         {
             disp_flag = 0;
-            OLED_BuffShowNum(32, 0, (long)g_motor_speed, 0);
-            OLED_BuffShowNum(32, 2, (long)(g_motor_angle / 10), 0);
-            OLED_BuffShow();
+            OLED_Update();
         }
  
         /* 6. 串口调试打印（每50ms）
