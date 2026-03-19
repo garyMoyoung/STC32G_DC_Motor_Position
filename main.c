@@ -1,7 +1,7 @@
 /*==============================================================================
  * main.c  —  集成 Modbus RTU 协议寄存器映射
  *
- * 寄存器映射（对应通信协议 v1.0）：
+ * 寄存器映射（对应通信协议 v1.1）：
  *   0x0000  Motor_Angle       电机当前角度（只读，0.1°，带符号）
  *   0x0001  Motor_Speed       电机当前转速（只读，rpm，带符号）
  *   0x0002  Encoder_Count_H   编码器累计值高16位（只读）
@@ -12,7 +12,12 @@
  *   0x0007  Status_Flags      状态标志位（只读）
  *   0x0008  PWM_Duty_Raw      原始PWM占空比（手动模式可写）
  *   0x0009  ms_Tick           系统时基计数（只读）
- *   0x000A~0x000F  预留，读取恒为0
+ *   0x000A  Speed_Kp          速度环Kp（可读写，×100整数）
+ *   0x000B  Speed_Ki          速度环Ki（可读写，×100整数）
+ *   0x000C  Speed_Kd          速度环Kd（可读写，×100整数）
+ *   0x000D  Angle_Kp          角度环Kp（可读写，×100整数）
+ *   0x000E  Angle_Ki          角度环Ki（可读写，×100整数）
+ *   0x000F  Angle_Kd          角度环Kd（可读写，×100整数）
  *
  * 线圈映射：
  *   0x0000  Motor_Enable      电机使能（1=使能，0=禁用）
@@ -205,6 +210,17 @@ static void Modbus_SyncRegs(void)
     g_set_speed = (int)modbus_regs[4];       /* Set_Speed    */
     g_set_angle = (int)modbus_regs[5];       /* Set_Angle    */
     g_ctrl_mode = (unsigned char)modbus_regs[6]; /* Control_Mode */
+
+    /* ── PID 参数同步（0x000A~0x000F）──
+     * 上位机写入后，取回到 PID 结构体
+     * 每次同步都更新（开销极小，且保证实时性）
+     */
+    g_pid_speed.Kp = (int)modbus_regs[0x0A];   /* Speed_Kp */
+    g_pid_speed.Ki = (int)modbus_regs[0x0B];   /* Speed_Ki */
+    g_pid_speed.Kd = (int)modbus_regs[0x0C];   /* Speed_Kd */
+    g_pid_angle.Kp = (int)modbus_regs[0x0D];   /* Angle_Kp */
+    g_pid_angle.Ki = (int)modbus_regs[0x0E];   /* Angle_Ki */
+    g_pid_angle.Kd = (int)modbus_regs[0x0F];   /* Angle_Kd */
 
     /* 线圈 Alarm_Clear（bit3）：写1后自动归0，同时清故障标志 */
     if (modbus_coils & (1 << 3))
