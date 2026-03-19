@@ -164,8 +164,8 @@ sbit TOG = P0^4;
  *   Kp=200：set=50rpm 首拍 delta_u=100，偏离中点约6%，可驱动电机启动
  *   Ki=20 ：每拍稳态积分，消除稳态误差
  */
-#define PID_SPEED_KP    200    /* Kp = 2.00 */
-#define PID_SPEED_KI    0     /* Ki = 0.20，若振荡先清0 */
+#define PID_SPEED_KP    4000    /* Kp = 2.00 */
+#define PID_SPEED_KI    100     /* Ki = 0.20，若振荡先清0 */
 #define PID_SPEED_KD    0      /* Kd = 0.00 */
 
 /* 位置环参数（实际值×100） */
@@ -174,7 +174,7 @@ sbit TOG = P0^4;
 #define PID_ANGLE_KD    10      /* Kd = 0.10 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
-#define MAX_SPEED_FOR_ANGLE   50
+#define MAX_SPEED_FOR_ANGLE   100
 
 static PID_t g_pid_speed;       /* 速度环 PID 实例 */
 static PID_t g_pid_angle;       /* 位置环 PID 实例 */
@@ -563,6 +563,7 @@ void Timer0_ISR(void) interrupt 1
     /* 按键扫描 */
     Key_Scan();
 
+    /* 蜂鸣器状态更新 */
     Buzzer_Update();
     /* 编码器采样与计算（每10ms执行一次） */
     if (ms_tick % 10 == 0)
@@ -602,17 +603,14 @@ void Timer0_ISR(void) interrupt 1
         }
 
         /*
-         * 角度换算（输出轴，0.1° 精度）：
-         *   angle = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT
-         *         = (enc_total % 2640) * 3600 / 2640
-         * 结果范围：0 ~ 3599（对应 0.0° ~ 359.9°）
-         * 负数取模在C中结果为负，加 ENC_PPR_OUTPUT 修正为正值
+         * 角度换算（输出轴，累计角度，0.1° 精度）：
+         *   angle(0.1°) = enc_total * 3600 / ENC_PPR_OUTPUT
+         *
+         * 上电时 enc_total=0，因此上电位置即为 0°（参考零点）。
+         * 结果为有符号累计值，正转为正、反转为负，范围约 ±3276°（±9圈）。
+         * 超出 int 范围后溢出，若需更大行程可改为 long 并同步修改 PID 接口。
          */
-        {
-            long rem = g_enc_total % (long)ENC_PPR_OUTPUT;
-            if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
-            g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
-        }
+        g_motor_angle = (int)(g_enc_total * 3600L / (long)ENC_PPR_OUTPUT);
 
         /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
         Motor_ControlUpdate();
