@@ -405,8 +405,8 @@ static void OLED_Update(void)
 
     OLED_BuffClear();
 
-    /* ── page 0-1：当前转速（调节目标=0时标签反白） ── */
-    OLED_BuffShowString(0,  0, "SPD:", (g_key_adj_target == 0) ? 1 : 0);
+    /* ── page 0-1：当前转速 ── */
+    OLED_BuffShowString(0,  0, "SPD:", 0);
     sprintf(buf, "%c%3d", (spd < 0) ? '-' : '+', (spd < 0) ? -spd : spd);
     OLED_BuffShowString(32, 0, buf, 0);
     OLED_BuffShowString(64, 0, "rpm", 0);
@@ -415,13 +415,13 @@ static void OLED_Update(void)
     else
         OLED_BuffShowString(100, 0, "OFF", 0);
 
-    /* ── page 2-3：当前角度（调节目标=1时标签反白） ── */
-    OLED_BuffShowString(0,  2, "ANG:", (g_key_adj_target == 1) ? 1 : 0);
-    sprintf(buf, "%c%3d", (ang < 0) ? '-' : '+', (ang < 0) ? -ang : ang);
+    /* ── page 2-3：当前角度 ── */
+    OLED_BuffShowString(0,  2, "ANG:", 0);
+    sprintf(buf, "%4d", ang);
     OLED_BuffShowString(32, 2, buf, 0);
     OLED_BuffShowString(64, 2, "deg", 0);
 
-    /* ── page 4-5：设定值 + 控制模式标签 ── */
+    /* ── page 4-5：控制模式 + 当前模式设定值 ── */
     OLED_BuffShowString(0,  4, "SET:", 0);
     if (g_ctrl_mode == 0)
     {
@@ -432,8 +432,8 @@ static void OLED_Update(void)
     }
     else if (g_ctrl_mode == 1)
     {
-        sv = g_set_angle / 10;
-        sprintf(buf, "%c%3d deg", (sv < 0) ? '-' : '+', (sv < 0) ? -sv : sv);
+        sv = (g_set_angle - ANGLE_OFFSET) / 10;   /* 减偏移，显示用户角度 */
+        sprintf(buf, "%4d deg", sv);
         OLED_BuffShowString(32, 4, buf, 0);
         OLED_BuffShowString(96, 4, "ANG", 1);
     }
@@ -444,15 +444,15 @@ static void OLED_Update(void)
         OLED_BuffShowString(96, 4, "MAN", 1);
     }
 
-    /* ── page 6-7：PID参数（调节目标=2/3时对应参数反白） ── */
-    OLED_BuffShowString(0,  6, "Kp:", (g_key_adj_target == 2) ? 1 : 0);
-    sprintf(buf, "%-4d", g_pid_speed.Kp);
-    OLED_BuffShowString(24, 6, buf, 0);
-    OLED_BuffShowString(64, 6, "Ki:", (g_key_adj_target == 3) ? 1 : 0);
-    sprintf(buf, "%-4d", g_pid_speed.Ki);
-    OLED_BuffShowString(88, 6, buf, 0);
+    /* ── page 6-7：按键调节目标值（当前选中项反白） ── */
+    sv = (int)modbus_regs[4];   /* 目标速度 */
+    sprintf(buf, "S:%c%3d", (sv < 0) ? '-' : '+', (sv < 0) ? -sv : sv);
+    OLED_BuffShowString(0,  6, buf, (g_key_adj_target == 0) ? 1 : 0);
+    sv = ((int)modbus_regs[5] - ANGLE_OFFSET) / 10;  /* 目标角度（用户视角） */
+    sprintf(buf, "A:%3d", sv);
+    OLED_BuffShowString(64, 6, buf, (g_key_adj_target == 1) ? 1 : 0);
 
-    /* ── 分隔线（最后画，用|=写入不覆盖文字） ── */
+    /* ── 分隔线 ── */
     OLED_BuffShowLine(0, 15, 127, 15);
     OLED_BuffShowLine(0, 31, 127, 31);
     OLED_BuffShowLine(0, 47, 127, 47);

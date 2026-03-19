@@ -1,6 +1,5 @@
 #include "key.h"
 #include "uart.h"
-#include "pid.h"
 #include "rs485.h"
 #include <STC32G.H>
 
@@ -8,40 +7,29 @@
  * 调节目标（与 main.c 中的 g_key_adj_target 定义一致）
  *   0 = SetSpd   目标转速（modbus_regs[4]，rpm）
  *   1 = SetAng   目标角度（modbus_regs[5]，0.1°）
- *   2 = Kp       速度环 Kp
- *   3 = Ki       速度环 Ki
+ * PID 参数（Kp/Ki/Kd）通过上位机调节，按键不再控制
  *===========================================================================*/
 #define ADJ_SET_SPD  0
 #define ADJ_SET_ANG  1
-#define ADJ_KP       2
-#define ADJ_KI       3
-#define ADJ_NUM      4   /* 循环总数 */
+#define ADJ_NUM      2   /* 循环总数：只有速度和角度 */
 
 /* 各目标调节量限幅 */
 #define SPD_MIN  (-999)
 #define SPD_MAX    999
 #define ANG_MIN  (-3200)    /* 0.1°，对应 ±320° */
 #define ANG_MAX   3200
-#define KP_MIN     0
-#define KP_MAX     2000
-#define KI_MIN     0
-#define KI_MAX     500
+
 
 /*
  * 步长表 [目标][0=单击, 1=长按持续, 2=双击]
  * SetSpd: 1 / 5 / 10 rpm
  * SetAng: 10 / 50 / 100 (0.1°，即 1° / 5° / 10°)
- * Kp:     1 / 10 / 100
- * Ki:     1 / 10 / 50
  */
-static const int adj_steps[4][3] = {
+static const int adj_steps[2][3] = {
     {  1,   5,  10},   /* SetSpd */
     { 10,  50, 100},   /* SetAng */
-    {  1,  10, 100},   /* Kp     */
-    {  1,  10,  50},   /* Ki     */
 };
 
-extern PID_t          g_pid_speed;
 extern unsigned char  g_key_adj_target;
 /*=============================================================================
  * 全局按键对象
@@ -301,25 +289,14 @@ static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
         // 定时器超时（300ms内没有第二次点击）
         if (pkey->click_timer == 0)
         {
-            // 只有单击计数为1时才确认为单击
-            if (pkey->click_count == 1)
-            {
-                // 重要改动：检查event是否已经被clear过了
-                // 只在event为KEY_NONE时重新设置，否则说明已被处理
-                if (pkey->event != KEY_SINGLE_CLICK)
-                {
-                    pkey->event = KEY_SINGLE_CLICK;
-                }
-                pkey->click_count = 0;
-            }
-            else if (pkey->click_count >= 2)
-            {
-                // 双击已处理，清除计数
+            // 超时后只需清除单击计数
+            // 不再重新设置 event = KEY_SINGLE_CLICK！
+            // 因为第一次释放时已经发送过单击事件并被主循环处理了，
+            // 如果这里再设一次会导致单击跳两次。
                 pkey->click_count = 0;
             }
         }
     }
-}
 
 /*=============================================================================
  * 按键扫描（在 Timer0_ISR 中每 1ms 调用一次）
@@ -408,24 +385,6 @@ static void Key_AdjustTarget(int step)
             if (sv < ANG_MIN) sv = ANG_MIN;
             modbus_regs[5] = (unsigned int)sv;
             Printf("SetAng=%d(0.1deg)\r\n", sv);
-            break;
-
-        case ADJ_KP:
-            sv = (int)g_pid_speed.Kp + step;
-            if (sv > KP_MAX) sv = KP_MAX;
-            if (sv < KP_MIN) sv = KP_MIN;
-            g_pid_speed.Kp   = (int)sv;
-            modbus_regs[0x0A] = (unsigned int)sv;   /* 同步防止Modbus_SyncRegs覆盖 */
-            Printf("Kp=%d\r\n", sv);
-            break;
-
-        case ADJ_KI:
-            sv = (int)g_pid_speed.Ki + step;
-            if (sv > KI_MAX) sv = KI_MAX;
-            if (sv < KI_MIN) sv = KI_MIN;
-            g_pid_speed.Ki   = (int)sv;
-            modbus_regs[0x0B] = (unsigned int)sv;   /* 同步防止Modbus_SyncRegs覆盖 */
-            Printf("Ki=%d\r\n", sv);
             break;
 
         default:
