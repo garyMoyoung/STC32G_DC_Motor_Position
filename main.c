@@ -174,9 +174,9 @@ sbit TOG = P0^4;
 #define PID_SPEED_KD    0      /* Kd = 0.00 */
 
 /* 位置环参数（实际值×100） */
-#define PID_ANGLE_KP    80      /* Kp = 0.80 */
-#define PID_ANGLE_KI    2       /* Ki = 0.02 */
-#define PID_ANGLE_KD    10      /* Kd = 0.10 */
+#define PID_ANGLE_KP    2000      /* Kp = 0.80 */
+#define PID_ANGLE_KI    20       /* Ki = 0.02 */
+#define PID_ANGLE_KD    0      /* Kd = 0.10 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
 #define MAX_SPEED_FOR_ANGLE   100
@@ -189,6 +189,7 @@ static PID_t g_pid_angle;       /* 位置环 PID 实例 */
  * 主循环每轮调用一次：
  *   - 把最新运行状态刷新到只读寄存器
  *   - 把上位机写入的可写寄存器取回到控制变量
+ *   - 同步 PID 参数（上位机写入时更新到 PID 结构体）
  *===========================================================================*/
 static void Modbus_SyncRegs(void)
 {
@@ -202,9 +203,9 @@ static void Modbus_SyncRegs(void)
     modbus_regs[7] = g_status_flags;                       /* Status_Flags */
     modbus_regs[9] = ms_tick;                              /* ms_Tick      */
 
-    /* 预留寄存器始终为0 */
-    for (k = 10; k < 16; k++)
-        modbus_regs[k] = 0x0000;
+    // /* 预留寄存器始终为0 */
+    // for (k = 10; k < 16; k++)
+    //     modbus_regs[k] = 0x0000;
 
     /* ── 可写寄存器：取回上位机设定值 ── */
     g_set_speed = (int)modbus_regs[4];       /* Set_Speed    */
@@ -445,6 +446,14 @@ void main(void)
     modbus_regs[6] = 0;     /* Control_Mode = 速度 */
     modbus_regs[8] = 0;     /* PWM_Duty_Raw = 0    */
 
+    /* PID参数寄存器初始值（与PID_Init一致，上位机可读取并显示） */
+    modbus_regs[0x0A] = PID_SPEED_KP;   /* Speed_Kp */
+    modbus_regs[0x0B] = PID_SPEED_KI;   /* Speed_Ki */
+    modbus_regs[0x0C] = PID_SPEED_KD;   /* Speed_Kd */
+    modbus_regs[0x0D] = PID_ANGLE_KP;   /* Angle_Kp */
+    modbus_regs[0x0E] = PID_ANGLE_KI;   /* Angle_Ki */
+    modbus_regs[0x0F] = PID_ANGLE_KD;   /* Angle_Kd */
+
     /* Motor_Enable 线圈默认关闭，等上位机显式使能 */
     modbus_coils = 0x00;
 
@@ -460,6 +469,8 @@ void main(void)
     Printf("AVG_N=%d  PWM_ARR=%d\n", SPEED_AVG_N, PWM_ARR);
     Printf("PID spd: Kp=%d Ki=%d Kd=%d\n",
            PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD);
+    Printf("PID ang: Kp=%d Ki=%d Kd=%d\n",
+           PID_ANGLE_KP, PID_ANGLE_KI, PID_ANGLE_KD);
     Printf("Debug: T(ms) Set Spd dEnc Duty\n");
     Printf("======================\n");
 
@@ -626,7 +637,11 @@ void Timer0_ISR(void) interrupt 1
          * 结果为有符号累计值，正转为正、反转为负，范围约 ±3276°（±9圈）。
          * 超出 int 范围后溢出，若需更大行程可改为 long 并同步修改 PID 接口。
          */
-        g_motor_angle = (int)(g_enc_total * 3600L / (long)ENC_PPR_OUTPUT);
+        {
+            long rem = g_enc_total % (long)ENC_PPR_OUTPUT;
+            if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
+            g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
+        }
 
         /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */
         Motor_ControlUpdate();
