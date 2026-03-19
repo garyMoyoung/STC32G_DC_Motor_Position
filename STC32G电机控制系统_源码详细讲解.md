@@ -168,7 +168,15 @@ def crc16(data: bytes) -> int:
 
 关键设计：**实时控制放在中断里（10ms 周期），非实时通信和显示放在主循环里**。中断只设标志位，主循环检测标志后执行耗时操作（如 OLED 刷屏、Printf）。
 
+![img](file:///E:\QQ\Tencent Files\2413979017\nt_qq\nt_data\Pic\2026-03\Ori\85faafb329f8f2dc908b03990ae83888.jpeg)
+
 ---
+
+![image-20260319220042333](C:/Users/24139/AppData/Roaming/Typora/typora-user-images/image-20260319220042333.png)
+
+
+
+
 
 ## 二、main.h — 系统级宏定义
 
