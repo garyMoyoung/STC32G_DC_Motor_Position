@@ -132,7 +132,7 @@ sbit TOG = P0^4;
  * 速度环（Speed PID）：
  *   控制周期 = 10ms（编码器采样周期）
  *   输入  = g_set_speed（rpm）vs g_motor_speed（rpm）
- *   输出  = PWM 占空比（0 ~ PWM_ARR = 1658）
+ *   输出  = PWM 占空比（0 ~ PWM_ARR = 3317）
  *   初始参数（需根据实际电机调试）：
  *     Kp=200（×100=2.00），Ki=5（×100=0.05），Kd=0（暂不加微分）
  *
@@ -223,7 +223,7 @@ static void Modbus_SyncRegs(void)
  * Motor_ControlUpdate
  *
  * 驱动拓扑：两个半桥（H桥），CCR 决定方向和速度
- *   CCR = PWM_MID (414) → 50% → 停车（两端电压相等，净电压=0）
+ *   CCR = PWM_MID (1658) → 50% → 停车（两端电压相等，净电压=0）
  *   CCR < PWM_MID       → 正转（CCR 越小速度越快）
  *   CCR > PWM_MID       → 反转（CCR 越大速度越快）
  *

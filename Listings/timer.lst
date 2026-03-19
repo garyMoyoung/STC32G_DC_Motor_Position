@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 1   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE timer
@@ -50,10 +50,10 @@ stmt  level    source
    40   1          // ---- PWMA 主控寄存器 ----
    41   1      
    42   1          // PWMx_CR1：控制寄存器1
-   43   1          // CMS[1:0]=01：中央对齐模式1（上计数时比较匹配产生中断标志）
-   44   1          // DIR=0：向上计数
+   43   1          // CMS[1:0]=00：边沿对齐模式
+   44   1          // DIR=0：向上计数（0→ARR）
    45   1          // ARPE=1：ARR预装载使能
-   46   1          PWMA_CR1 = 0x60;            // CMS=11:中央对齐3，ARPE=1
+   46   1          PWMA_CR1 = 0x80;            // CMS=00:边沿对齐，DIR=0，ARPE=1
    47   1      
    48   1          // PWMx_CR2：控制寄存器2
    49   1          // MMS=000：复位，触发输出为复位信号（电机控制一般设此）
@@ -63,10 +63,10 @@ stmt  level    source
    53   1          PWMA_PSCRH = 0x00;
    54   1          PWMA_PSCRL = 0x00;
    55   1      
-   56   1          // ARR = PWM_ARR = 829（见 main.h，中央对齐20kHz）
-   57   1          // 实际PWM频率 = FOSC / (2 * ARR) = 33177600 / 1658 = 20kHz
+   56   1          // ARR = PWM_ARR = 3317（见 main.h，边沿对齐10kHz）
+   57   1          // 实际PWM频率 = FOSC / ARR = 33177600 / 3317 = 10kHz
    58   1          PWMA_ARRH = (PWM_ARR) >> 8;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 2   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 2   
 
    59   1          PWMA_ARRL = (PWM_ARR) & 0xFF;
    60   1      
@@ -134,7 +134,7 @@ stmt  level    source
   122   1          P_SW2 |= 0x80;
   123   1          PWMA_ENO = 0x03;
   124   1          P_SW2 &= ~0x80;
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 3   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 3   
 
   125   1      }
   126          
@@ -202,7 +202,7 @@ stmt  level    source
   188   1          int cnt;
   189   1          unsigned int raw;
   190   1          
-C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:26:46  PAGE 4   
+C251 COMPILER V5.60.0,  timer                                                              19/03/26  14:34:45  PAGE 4   
 
   191   1          P_SW2 |= 0x80;
   192   1          raw  = (unsigned int)PWMB_CNTRH << 8;

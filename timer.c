@@ -40,10 +40,10 @@ void PWM_Init(void)
     // ---- PWMA 主控寄存器 ----
 
     // PWMx_CR1：控制寄存器1
-    // CMS[1:0]=01：中央对齐模式1（上计数时比较匹配产生中断标志）
-    // DIR=0：向上计数
+    // CMS[1:0]=00：边沿对齐模式
+    // DIR=0：向上计数（0→ARR）
     // ARPE=1：ARR预装载使能
-    PWMA_CR1 = 0x60;            // CMS=11:中央对齐3，ARPE=1
+    PWMA_CR1 = 0x80;            // CMS=00:边沿对齐，DIR=0，ARPE=1
 
     // PWMx_CR2：控制寄存器2
     // MMS=000：复位，触发输出为复位信号（电机控制一般设此）
@@ -53,8 +53,8 @@ void PWM_Init(void)
     PWMA_PSCRH = 0x00;
     PWMA_PSCRL = 0x00;
 
-    // ARR = PWM_ARR = 829（见 main.h，中央对齐20kHz）
-    // 实际PWM频率 = FOSC / (2 * ARR) = 33177600 / 1658 = 20kHz
+    // ARR = PWM_ARR = 3317（见 main.h，边沿对齐10kHz）
+    // 实际PWM频率 = FOSC / ARR = 33177600 / 3317 = 10kHz
     PWMA_ARRH = (PWM_ARR) >> 8;
     PWMA_ARRL = (PWM_ARR) & 0xFF;
 
