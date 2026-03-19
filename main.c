@@ -480,6 +480,7 @@ void Timer0_ISR(void) interrupt 1
     /* 按键扫描 */
     Key_Scan();
 
+    Buzzer_Update();
     /* 编码器采样与计算（每10ms执行一次） */
     if (ms_tick % 10 == 0)
     {
@@ -499,7 +500,7 @@ void Timer0_ISR(void) interrupt 1
          * 用 long 中间值防止 int 溢出（最大转速100rpm时 enc_delta≈4.4）
          */
         g_motor_speed = (int)((long)enc_delta * 6000L / ENC_PPR_OUTPUT);
- 
+
         /*
          * 角度换算（输出轴，0.1° 精度）：
          *   angle = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT

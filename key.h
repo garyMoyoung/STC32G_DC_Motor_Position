@@ -51,6 +51,7 @@ sbit BUZZER = P1^3;         /* P1.3 有源蜂鸣器 */
  * 立即返回，由内部状态机在每1ms自动推进
  */
 void Buzzer_PlayTone(unsigned char tone_type);
+void Buzzer_Update(void);
 
 /*
  * 获取蜂鸣器是否忙碌

@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 1   
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE key
@@ -65,8 +65,8 @@ stmt  level    source
    55              }
    56          };
    57          
-   58          static void Buzzer_Update(void)
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 2   
+   58          void Buzzer_Update(void)
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 2   
 
    59          {
    60   1          unsigned int elapsed_ms;
@@ -133,374 +133,377 @@ stmt  level    source
   121   1          // P4M1 = 0x00, P4M0 = 0x00（初始全为准双向）
   122   1          // 无需额外配置，直接读取GPIO值
   123   1          
-  124   1          // 初始化按键1
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 3   
+  124   1              /* P1.3 配置为推挽输出（蜂鸣器） */
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 3   
 
-  125   1          key1.pin_level = 1;
-  126   1          key1.state = 0;          // 初始无按键
-  127   1          key1.event = KEY_NONE;
-  128   1          key1.press_time = 0;
-  129   1          key1.release_time = 0;
-  130   1          key1.debounce_cnt = 0;
-  131   1          key1.click_count = 0;
-  132   1          key1.click_timer = 0;
-  133   1          
-  134   1          // 初始化按键2
-  135   1          key2.pin_level = 1;
-  136   1          key2.state = 0;
-  137   1          key2.event = KEY_NONE;
-  138   1          key2.press_time = 0;
-  139   1          key2.release_time = 0;
-  140   1          key2.debounce_cnt = 0;
-  141   1          key2.click_count = 0;
-  142   1          key2.click_timer = 0;
-  143   1          
-  144   1          // 初始化按键3
-  145   1          key3.pin_level = 1;
-  146   1          key3.state = 0;
-  147   1          key3.event = KEY_NONE;
-  148   1          key3.press_time = 0;
-  149   1          key3.release_time = 0;
-  150   1          key3.debounce_cnt = 0;
-  151   1          key3.click_count = 0;
-  152   1          key3.click_timer = 0;
-  153   1          
-  154   1          Printf("[KEY] Init OK\r\n");
-  155   1      }
-  156          
-  157          /*=============================================================================
-  158           * 单个按键状态机处理
-  159           * 
-  160           * 状态转移：
-  161           *   0(释放) -> 1(按下) -> 判定为单击?(有),再判双击?(有) -> 0(释放)
-  162           *                      -> 长按判定?(有)长按 -> 0(释放)
-  163           *
-  164           * 双击逻辑：
-  165           *   第一次单击后，在300ms内再按一次即为双击
-  166           *===========================================================================*/
-  167          static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
-  168          {
-  169   1          pkey->pin_level = pin;
-  170   1          
-  171   1          // ========== 按键按下过程 ==========
-  172   1          if (pkey->pin_level == 0)  // GPIO为0
-  173   1          {
-  174   2              if (pkey->state == 0)  // 从释放状态进入
-  175   2              {
-  176   3                  pkey->debounce_cnt++;
-  177   3                  if (pkey->debounce_cnt >= KEY_DEBOUNCE_TIME)
-  178   3                  {
-  179   4                      pkey->state = 1;
-  180   4                      pkey->press_time = 0;
-  181   4                      pkey->debounce_cnt = 0;
-  182   4                  }
-  183   3              }
-  184   2              else if (pkey->state == 1)
-  185   2              {
-  186   3                  pkey->press_time++;
-  187   3                  
-  188   3                  // 长按判定（1000ms）
-  189   3                  if (pkey->press_time == KEY_LONG_PRESS_TIME)
-  190   3                  {
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 4   
+  125   1          P1M1 &= ~0x08;
+  126   1          P1M0 |=  0x08;
+  127   1      
+  128   1          // 初始化按键1
+  129   1          key1.pin_level = 1;
+  130   1          key1.state = 0;          // 初始无按键
+  131   1          key1.event = KEY_NONE;
+  132   1          key1.press_time = 0;
+  133   1          key1.release_time = 0;
+  134   1          key1.debounce_cnt = 0;
+  135   1          key1.click_count = 0;
+  136   1          key1.click_timer = 0;
+  137   1          
+  138   1          // 初始化按键2
+  139   1          key2.pin_level = 1;
+  140   1          key2.state = 0;
+  141   1          key2.event = KEY_NONE;
+  142   1          key2.press_time = 0;
+  143   1          key2.release_time = 0;
+  144   1          key2.debounce_cnt = 0;
+  145   1          key2.click_count = 0;
+  146   1          key2.click_timer = 0;
+  147   1          
+  148   1          // 初始化按键3
+  149   1          key3.pin_level = 1;
+  150   1          key3.state = 0;
+  151   1          key3.event = KEY_NONE;
+  152   1          key3.press_time = 0;
+  153   1          key3.release_time = 0;
+  154   1          key3.debounce_cnt = 0;
+  155   1          key3.click_count = 0;
+  156   1          key3.click_timer = 0;
+  157   1          
+  158   1          Printf("[KEY] Init OK\r\n");
+  159   1      }
+  160          
+  161          /*=============================================================================
+  162           * 单个按键状态机处理
+  163           * 
+  164           * 状态转移：
+  165           *   0(释放) -> 1(按下) -> 判定为单击?(有),再判双击?(有) -> 0(释放)
+  166           *                      -> 长按判定?(有)长按 -> 0(释放)
+  167           *
+  168           * 双击逻辑：
+  169           *   第一次单击后，在300ms内再按一次即为双击
+  170           *===========================================================================*/
+  171          static void Key_ScanSingle(KEY_Struct *pkey, unsigned char pin)
+  172          {
+  173   1          pkey->pin_level = pin;
+  174   1          
+  175   1          // ========== 按键按下过程 ==========
+  176   1          if (pkey->pin_level == 0)  // GPIO为0
+  177   1          {
+  178   2              if (pkey->state == 0)  // 从释放状态进入
+  179   2              {
+  180   3                  pkey->debounce_cnt++;
+  181   3                  if (pkey->debounce_cnt >= KEY_DEBOUNCE_TIME)
+  182   3                  {
+  183   4                      pkey->state = 1;
+  184   4                      pkey->press_time = 0;
+  185   4                      pkey->debounce_cnt = 0;
+  186   4                  }
+  187   3              }
+  188   2              else if (pkey->state == 1)
+  189   2              {
+  190   3                  pkey->press_time++;
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 4   
 
-  191   4                      pkey->event = KEY_LONG_PRESS;
-  192   4                      pkey->click_count = 0;  // 清除单击计数，禁止后续双击识别
-  193   4                      pkey->click_timer = 0;  // 停止双击定时器
-  194   4                  }
-  195   3                  // 长按持续中（每100ms）
-  196   3                  else if (pkey->press_time > KEY_LONG_PRESS_TIME && 
-  197   3                           pkey->press_time % 100 == 0)
-  198   3                  {
-  199   4                      pkey->event = KEY_PRESSING;
-  200   4                  }
-  201   3              }
-  202   2          }
-  203   1          
-  204   1          // ========== 按键释放过程 ==========
-  205   1          else  // GPIO为1（释放）
-  206   1          {
-  207   2              if (pkey->state == 1)
-  208   2              {
-  209   3                  pkey->debounce_cnt++;
-  210   3                  if (pkey->debounce_cnt >= KEY_DEBOUNCE_TIME)
-  211   3                  {
-  212   4                      pkey->state = 0;
-  213   4                      pkey->debounce_cnt = 0;
-  214   4                      
-  215   4                      // 判定是短按还是长按
-  216   4                      if (pkey->press_time < KEY_LONG_PRESS_TIME)
-  217   4                      {
-  218   5                          // 短按逻辑
-  219   5                          pkey->click_count++;
-  220   5                          
-  221   5                          if (pkey->click_count == 1)
-  222   5                          {
-  223   6                              // 第一次单击：立即发送事件，启动双击检测
-  224   6                              pkey->event = KEY_SINGLE_CLICK;
-  225   6                              pkey->click_timer = KEY_DOUBLE_CLICK_INTERVAL;
-  226   6                          }
-  227   5                          else if (pkey->click_count >= 2)
-  228   5                          {
-  229   6                              // 第二次单击：立即发送双击事件，停止定时器
-  230   6                              pkey->event = KEY_DOUBLE_CLICK;
-  231   6                              pkey->click_timer = 0;  // 关键：停止定时器，防止后续的单击重复
-  232   6                              pkey->click_count = 0;
-  233   6                          }
-  234   5                      }
-  235   4                      else
-  236   4                      {
-  237   5                          // 长按释放
-  238   5                          pkey->event = KEY_RELEASE;
-  239   5                          pkey->click_count = 0;
-  240   5                          pkey->click_timer = 0;
-  241   5                      }
-  242   4                  }
-  243   3              }
-  244   2              else
-  245   2              {
-  246   3                  pkey->debounce_cnt = 0;
+  191   3                  
+  192   3                  // 长按判定（1000ms）
+  193   3                  if (pkey->press_time == KEY_LONG_PRESS_TIME)
+  194   3                  {
+  195   4                      pkey->event = KEY_LONG_PRESS;
+  196   4                      pkey->click_count = 0;  // 清除单击计数，禁止后续双击识别
+  197   4                      pkey->click_timer = 0;  // 停止双击定时器
+  198   4                  }
+  199   3                  // 长按持续中（每100ms）
+  200   3                  else if (pkey->press_time > KEY_LONG_PRESS_TIME && 
+  201   3                           pkey->press_time % 100 == 0)
+  202   3                  {
+  203   4                      pkey->event = KEY_PRESSING;
+  204   4                  }
+  205   3              }
+  206   2          }
+  207   1          
+  208   1          // ========== 按键释放过程 ==========
+  209   1          else  // GPIO为1（释放）
+  210   1          {
+  211   2              if (pkey->state == 1)
+  212   2              {
+  213   3                  pkey->debounce_cnt++;
+  214   3                  if (pkey->debounce_cnt >= KEY_DEBOUNCE_TIME)
+  215   3                  {
+  216   4                      pkey->state = 0;
+  217   4                      pkey->debounce_cnt = 0;
+  218   4                      
+  219   4                      // 判定是短按还是长按
+  220   4                      if (pkey->press_time < KEY_LONG_PRESS_TIME)
+  221   4                      {
+  222   5                          // 短按逻辑
+  223   5                          pkey->click_count++;
+  224   5                          
+  225   5                          if (pkey->click_count == 1)
+  226   5                          {
+  227   6                              // 第一次单击：立即发送事件，启动双击检测
+  228   6                              pkey->event = KEY_SINGLE_CLICK;
+  229   6                              pkey->click_timer = KEY_DOUBLE_CLICK_INTERVAL;
+  230   6                          }
+  231   5                          else if (pkey->click_count >= 2)
+  232   5                          {
+  233   6                              // 第二次单击：立即发送双击事件，停止定时器
+  234   6                              pkey->event = KEY_DOUBLE_CLICK;
+  235   6                              pkey->click_timer = 0;  // 关键：停止定时器，防止后续的单击重复
+  236   6                              pkey->click_count = 0;
+  237   6                          }
+  238   5                      }
+  239   4                      else
+  240   4                      {
+  241   5                          // 长按释放
+  242   5                          pkey->event = KEY_RELEASE;
+  243   5                          pkey->click_count = 0;
+  244   5                          pkey->click_timer = 0;
+  245   5                      }
+  246   4                  }
   247   3              }
-  248   2          }
-  249   1          
-  250   1          // ========== 双击定时器倒计时 ==========
-  251   1          if (pkey->click_timer > 0)
-  252   1          {
-  253   2              pkey->click_timer--;
-  254   2              
-  255   2              // 定时器超时（300ms内没有第二次点击）
-  256   2              if (pkey->click_timer == 0)
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 5   
+  248   2              else
+  249   2              {
+  250   3                  pkey->debounce_cnt = 0;
+  251   3              }
+  252   2          }
+  253   1          
+  254   1          // ========== 双击定时器倒计时 ==========
+  255   1          if (pkey->click_timer > 0)
+  256   1          {
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 5   
 
-  257   2              {
-  258   3                  // 只有单击计数为1时才确认为单击
-  259   3                  if (pkey->click_count == 1)
-  260   3                  {
-  261   4                      // 重要改动：检查event是否已经被clear过了
-  262   4                      // 只在event为KEY_NONE时重新设置，否则说明已被处理
-  263   4                      if (pkey->event != KEY_SINGLE_CLICK)
-  264   4                      {
-  265   5                          pkey->event = KEY_SINGLE_CLICK;
-  266   5                      }
-  267   4                      pkey->click_count = 0;
-  268   4                  }
-  269   3                  else if (pkey->click_count >= 2)
-  270   3                  {
-  271   4                      // 双击已处理，清除计数
-  272   4                      pkey->click_count = 0;
-  273   4                  }
-  274   3              }
-  275   2          }
-  276   1      }
-  277          
-  278          /*=============================================================================
-  279           * 按键扫描（在 Timer0_ISR 中每 1ms 调用一次）
-  280           *===========================================================================*/
-  281          void Key_Scan(void)
-  282          {
-  283   1          Key_ScanSingle(&key1, KEY1_PIN);
-  284   1          Key_ScanSingle(&key2, KEY2_PIN);
-  285   1          Key_ScanSingle(&key3, KEY3_PIN);
-  286   1      }
-  287          
-  288          /*=============================================================================
-  289           * 获取按键事件
-  290           *===========================================================================*/
-  291          unsigned char Key_GetEvent(unsigned char key_id)
-  292          {
-  293   1          switch (key_id)
-  294   1          {
-  295   2              case 1:
-  296   2                  return key1.event;
-  297   2              case 2:
-  298   2                  return key2.event;
-  299   2              case 3:
-  300   2                  return key3.event;
-  301   2              default:
-  302   2                  return KEY_NONE;
-  303   2          }
-  304   1      }
-  305          
-  306          /*=============================================================================
-  307           * 清除按键事件
-  308           *===========================================================================*/
-  309          void Key_ClearEvent(unsigned char key_id)
-  310          {
-  311   1          switch (key_id)
-  312   1          {
-  313   2              case 1:
-  314   2                  key1.event = KEY_NONE;
-  315   2                  break;
-  316   2              case 2:
-  317   2                  key2.event = KEY_NONE;
-  318   2                  break;
-  319   2              case 3:
-  320   2                  key3.event = KEY_NONE;
-  321   2                  break;
-  322   2          }
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 6   
+  257   2              pkey->click_timer--;
+  258   2              
+  259   2              // 定时器超时（300ms内没有第二次点击）
+  260   2              if (pkey->click_timer == 0)
+  261   2              {
+  262   3                  // 只有单击计数为1时才确认为单击
+  263   3                  if (pkey->click_count == 1)
+  264   3                  {
+  265   4                      // 重要改动：检查event是否已经被clear过了
+  266   4                      // 只在event为KEY_NONE时重新设置，否则说明已被处理
+  267   4                      if (pkey->event != KEY_SINGLE_CLICK)
+  268   4                      {
+  269   5                          pkey->event = KEY_SINGLE_CLICK;
+  270   5                      }
+  271   4                      pkey->click_count = 0;
+  272   4                  }
+  273   3                  else if (pkey->click_count >= 2)
+  274   3                  {
+  275   4                      // 双击已处理，清除计数
+  276   4                      pkey->click_count = 0;
+  277   4                  }
+  278   3              }
+  279   2          }
+  280   1      }
+  281          
+  282          /*=============================================================================
+  283           * 按键扫描（在 Timer0_ISR 中每 1ms 调用一次）
+  284           *===========================================================================*/
+  285          void Key_Scan(void)
+  286          {
+  287   1          Key_ScanSingle(&key1, KEY1_PIN);
+  288   1          Key_ScanSingle(&key2, KEY2_PIN);
+  289   1          Key_ScanSingle(&key3, KEY3_PIN);
+  290   1      }
+  291          
+  292          /*=============================================================================
+  293           * 获取按键事件
+  294           *===========================================================================*/
+  295          unsigned char Key_GetEvent(unsigned char key_id)
+  296          {
+  297   1          switch (key_id)
+  298   1          {
+  299   2              case 1:
+  300   2                  return key1.event;
+  301   2              case 2:
+  302   2                  return key2.event;
+  303   2              case 3:
+  304   2                  return key3.event;
+  305   2              default:
+  306   2                  return KEY_NONE;
+  307   2          }
+  308   1      }
+  309          
+  310          /*=============================================================================
+  311           * 清除按键事件
+  312           *===========================================================================*/
+  313          void Key_ClearEvent(unsigned char key_id)
+  314          {
+  315   1          switch (key_id)
+  316   1          {
+  317   2              case 1:
+  318   2                  key1.event = KEY_NONE;
+  319   2                  break;
+  320   2              case 2:
+  321   2                  key2.event = KEY_NONE;
+  322   2                  break;
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 6   
 
-  323   1      }
-  324          
-  325          /*=============================================================================
-  326           * 获取按键当前物理状态（0=按下，1=释放）
-  327           *===========================================================================*/
-  328          unsigned char Key_IsPressed(unsigned char key_id)
-  329          {
-  330   1          switch (key_id)
-  331   1          {
-  332   2              case 1:
-  333   2                  return (key1.state == 1);  // 1表示当前按下
-  334   2              case 2:
-  335   2                  return (key2.state == 1);
-  336   2              case 3:
-  337   2                  return (key3.state == 1);
-  338   2              default:
-  339   2                  return 0;
-  340   2          }
-  341   1      }
-  342          
-  343          static unsigned char last_event1 = KEY_NONE;
-  344          static unsigned char last_event2 = KEY_NONE;
-  345          static unsigned char last_event3 = KEY_NONE;
+  323   2              case 3:
+  324   2                  key3.event = KEY_NONE;
+  325   2                  break;
+  326   2          }
+  327   1      }
+  328          
+  329          /*=============================================================================
+  330           * 获取按键当前物理状态（0=按下，1=释放）
+  331           *===========================================================================*/
+  332          unsigned char Key_IsPressed(unsigned char key_id)
+  333          {
+  334   1          switch (key_id)
+  335   1          {
+  336   2              case 1:
+  337   2                  return (key1.state == 1);  // 1表示当前按下
+  338   2              case 2:
+  339   2                  return (key2.state == 1);
+  340   2              case 3:
+  341   2                  return (key3.state == 1);
+  342   2              default:
+  343   2                  return 0;
+  344   2          }
+  345   1      }
   346          
-  347          /*=============================================================================
-  348           * 处理所有按键事件（主循环调用）
-  349           * 包含KEY1/KEY2/KEY3的所有事件处理逻辑
-  350           *=============================================================================*/
-  351          unsigned char Key_HandleEvent(void)
-  352          {
-  353   1          unsigned char event;
-  354   1          
-  355   1          /* ===== KEY1 事件处理 ===== */
-  356   1          event = Key_GetEvent(1);
-  357   1          
-  358   1          // 过滤逻辑：如果这帧是双击，则忽略上一帧的单击
-  359   1          if (event == KEY_DOUBLE_CLICK && last_event1 == KEY_SINGLE_CLICK)
-  360   1          {
-  361   2              // 这是双击，不处理单击事件，直接处理双击
-  362   2              Printf("[KEY1] Double Click\r\n");
-  363   2              // TODO: 添加双击功能代码
-  364   2              Key_ClearEvent(1);
-  365   2              last_event1 = KEY_DOUBLE_CLICK;
-  366   2              return 1;
-  367   2          }
-  368   1          
-  369   1          // 正常流程
-  370   1          if (event == KEY_SINGLE_CLICK)
-  371   1          {
-  372   2              Printf("[KEY1] Single Click\r\n");
-  373   2              // TODO: 添加单击功能代码
-  374   2              Key_ClearEvent(1);
-  375   2              last_event1 = KEY_SINGLE_CLICK;
-  376   2              return 1;
-  377   2          }
-  378   1          else if (event == KEY_DOUBLE_CLICK)
-  379   1          {
-  380   2              Printf("[KEY1] Double Click\r\n");
-  381   2              // TODO: 添加双击功能代码
-  382   2              Key_ClearEvent(1);
-  383   2              last_event1 = KEY_DOUBLE_CLICK;
-  384   2              return 1;
-  385   2          }
-  386   1          else if (event == KEY_LONG_PRESS)
-  387   1          {
-  388   2              Printf("[KEY1] Long Press\r\n");
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 7   
+  347          static unsigned char last_event1 = KEY_NONE;
+  348          static unsigned char last_event2 = KEY_NONE;
+  349          static unsigned char last_event3 = KEY_NONE;
+  350          
+  351          /*=============================================================================
+  352           * 处理所有按键事件（主循环调用）
+  353           * 包含KEY1/KEY2/KEY3的所有事件处理逻辑
+  354           *=============================================================================*/
+  355          unsigned char Key_HandleEvent(void)
+  356          {
+  357   1          unsigned char event;
+  358   1          
+  359   1          /* ===== KEY1 事件处理 ===== */
+  360   1          event = Key_GetEvent(1);
+  361   1          
+  362   1          // 过滤逻辑：如果这帧是双击，则忽略上一帧的单击
+  363   1          if (event == KEY_DOUBLE_CLICK && last_event1 == KEY_SINGLE_CLICK)
+  364   1          {
+  365   2              // 这是双击，不处理单击事件，直接处理双击
+  366   2              Printf("[KEY1] Double Click\r\n");
+  367   2              // TODO: 添加双击功能代码
+  368   2              Key_ClearEvent(1);
+  369   2              last_event1 = KEY_DOUBLE_CLICK;
+  370   2              return 1;
+  371   2          }
+  372   1          
+  373   1          // 正常流程
+  374   1          if (event == KEY_SINGLE_CLICK)
+  375   1          {
+  376   2              Printf("[KEY1] Single Click\r\n");
+  377   2              // TODO: 添加单击功能代码
+  378   2              Key_ClearEvent(1);
+  379   2              last_event1 = KEY_SINGLE_CLICK;
+  380   2              return 1;
+  381   2          }
+  382   1          else if (event == KEY_DOUBLE_CLICK)
+  383   1          {
+  384   2              Printf("[KEY1] Double Click\r\n");
+  385   2              // TODO: 添加双击功能代码
+  386   2              Key_ClearEvent(1);
+  387   2              last_event1 = KEY_DOUBLE_CLICK;
+  388   2              return 1;
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 7   
 
-  389   2              Key_ClearEvent(1);
-  390   2              last_event1 = KEY_LONG_PRESS;
-  391   2              return 1;
-  392   2          }
-  393   1          else if (event == KEY_RELEASE)
-  394   1          {
-  395   2              Printf("[KEY1] Released\r\n");
-  396   2              Key_ClearEvent(1);
-  397   2              last_event1 = KEY_RELEASE;
-  398   2              return 1;
-  399   2          }
-  400   1          
-  401   1          last_event1 = KEY_NONE;
-  402   1          
-  403   1          /* ===== KEY2 事件处理 ===== */
-  404   1          event = Key_GetEvent(2);
-  405   1          
-  406   1          if (event == KEY_DOUBLE_CLICK && last_event2 == KEY_SINGLE_CLICK)
-  407   1          {
-  408   2              Printf("[KEY2] Double Click\r\n");
-  409   2              Key_ClearEvent(2);
-  410   2              last_event2 = KEY_DOUBLE_CLICK;
-  411   2              return 1;
-  412   2          }
-  413   1          
-  414   1          if (event == KEY_SINGLE_CLICK)
-  415   1          {
-  416   2              Printf("[KEY2] Single Click\r\n");
-  417   2              Key_ClearEvent(2);
-  418   2              last_event2 = KEY_SINGLE_CLICK;
-  419   2              return 1;
-  420   2          }
-  421   1          else if (event == KEY_DOUBLE_CLICK)
-  422   1          {
-  423   2              Printf("[KEY2] Double Click\r\n");
-  424   2              Key_ClearEvent(2);
-  425   2              last_event2 = KEY_DOUBLE_CLICK;
-  426   2              return 1;
-  427   2          }
-  428   1          else if (event == KEY_LONG_PRESS)
-  429   1          {
-  430   2              Printf("[KEY2] Long Press\r\n");
-  431   2              Key_ClearEvent(2);
-  432   2              last_event2 = KEY_LONG_PRESS;
-  433   2              return 1;
-  434   2          }
-  435   1          
-  436   1          last_event2 = KEY_NONE;
-  437   1          
-  438   1          /* ===== KEY3 事件处理 ===== */
-  439   1          event = Key_GetEvent(3);
-  440   1          
-  441   1          if (event == KEY_DOUBLE_CLICK && last_event3 == KEY_SINGLE_CLICK)
-  442   1          {
-  443   2              Printf("[KEY3] Double Click\r\n");
-  444   2              Key_ClearEvent(3);
-  445   2              last_event3 = KEY_DOUBLE_CLICK;
-  446   2              return 1;
-  447   2          }
-  448   1          
-  449   1          if (event == KEY_SINGLE_CLICK)
-  450   1          {
-  451   2              Printf("[KEY3] Single Click\r\n");
-  452   2              Key_ClearEvent(3);
-  453   2              last_event3 = KEY_SINGLE_CLICK;
-  454   2              return 1;
-C251 COMPILER V5.60.0,  key                                                                15/03/26  15:45:09  PAGE 8   
+  389   2          }
+  390   1          else if (event == KEY_LONG_PRESS)
+  391   1          {
+  392   2              Printf("[KEY1] Long Press\r\n");
+  393   2              Key_ClearEvent(1);
+  394   2              last_event1 = KEY_LONG_PRESS;
+  395   2              return 1;
+  396   2          }
+  397   1          else if (event == KEY_RELEASE)
+  398   1          {
+  399   2              Printf("[KEY1] Released\r\n");
+  400   2              Key_ClearEvent(1);
+  401   2              last_event1 = KEY_RELEASE;
+  402   2              return 1;
+  403   2          }
+  404   1          
+  405   1          last_event1 = KEY_NONE;
+  406   1          
+  407   1          /* ===== KEY2 事件处理 ===== */
+  408   1          event = Key_GetEvent(2);
+  409   1          
+  410   1          if (event == KEY_DOUBLE_CLICK && last_event2 == KEY_SINGLE_CLICK)
+  411   1          {
+  412   2              Printf("[KEY2] Double Click\r\n");
+  413   2              Key_ClearEvent(2);
+  414   2              last_event2 = KEY_DOUBLE_CLICK;
+  415   2              return 1;
+  416   2          }
+  417   1          
+  418   1          if (event == KEY_SINGLE_CLICK)
+  419   1          {
+  420   2              Printf("[KEY2] Single Click\r\n");
+  421   2              Key_ClearEvent(2);
+  422   2              last_event2 = KEY_SINGLE_CLICK;
+  423   2              return 1;
+  424   2          }
+  425   1          else if (event == KEY_DOUBLE_CLICK)
+  426   1          {
+  427   2              Printf("[KEY2] Double Click\r\n");
+  428   2              Key_ClearEvent(2);
+  429   2              last_event2 = KEY_DOUBLE_CLICK;
+  430   2              return 1;
+  431   2          }
+  432   1          else if (event == KEY_LONG_PRESS)
+  433   1          {
+  434   2              Printf("[KEY2] Long Press\r\n");
+  435   2              Key_ClearEvent(2);
+  436   2              last_event2 = KEY_LONG_PRESS;
+  437   2              return 1;
+  438   2          }
+  439   1          
+  440   1          last_event2 = KEY_NONE;
+  441   1          
+  442   1          /* ===== KEY3 事件处理 ===== */
+  443   1          event = Key_GetEvent(3);
+  444   1          
+  445   1          if (event == KEY_DOUBLE_CLICK && last_event3 == KEY_SINGLE_CLICK)
+  446   1          {
+  447   2              Printf("[KEY3] Double Click\r\n");
+  448   2              Key_ClearEvent(3);
+  449   2              last_event3 = KEY_DOUBLE_CLICK;
+  450   2              return 1;
+  451   2          }
+  452   1          
+  453   1          if (event == KEY_SINGLE_CLICK)
+  454   1          {
+C251 COMPILER V5.60.0,  key                                                                19/03/26  12:16:27  PAGE 8   
 
-  455   2          }
-  456   1          else if (event == KEY_DOUBLE_CLICK)
-  457   1          {
-  458   2              Printf("[KEY3] Double Click\r\n");
-  459   2              Key_ClearEvent(3);
-  460   2              last_event3 = KEY_DOUBLE_CLICK;
-  461   2              return 1;
-  462   2          }
-  463   1          else if (event == KEY_LONG_PRESS)
-  464   1          {
-  465   2              Printf("[KEY3] Long Press\r\n");
-  466   2              Key_ClearEvent(3);
-  467   2              last_event3 = KEY_LONG_PRESS;
-  468   2              return 1;
-  469   2          }
-  470   1          
-  471   1          last_event3 = KEY_NONE;
-  472   1          return 0;
-  473   1      }
-*** WARNING C174 IN LINE 58 OF key.c: 'Buzzer_Update': unreferenced 'static' function
+  455   2              Printf("[KEY3] Single Click\r\n");
+  456   2              Key_ClearEvent(3);
+  457   2              last_event3 = KEY_SINGLE_CLICK;
+  458   2              return 1;
+  459   2          }
+  460   1          else if (event == KEY_DOUBLE_CLICK)
+  461   1          {
+  462   2              Printf("[KEY3] Double Click\r\n");
+  463   2              Key_ClearEvent(3);
+  464   2              last_event3 = KEY_DOUBLE_CLICK;
+  465   2              return 1;
+  466   2          }
+  467   1          else if (event == KEY_LONG_PRESS)
+  468   1          {
+  469   2              Printf("[KEY3] Long Press\r\n");
+  470   2              Key_ClearEvent(3);
+  471   2              last_event3 = KEY_LONG_PRESS;
+  472   2              return 1;
+  473   2          }
+  474   1          
+  475   1          last_event3 = KEY_NONE;
+  476   1          return 0;
+  477   1      }
 
 
 Module Information          Static   Overlayable
 ------------------------------------------------
-  code size            =      1178     ------
+  code size            =      1184     ------
   ecode size           =    ------     ------
   data size            =    ------     ------
   idata size           =    ------     ------
@@ -519,4 +522,4 @@ Module Information          Static   Overlayable
 End of Module Information.
 
 
-C251 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

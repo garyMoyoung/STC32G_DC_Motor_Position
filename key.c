@@ -55,7 +55,7 @@ static const struct {
     }
 };
 
-static void Buzzer_Update(void)
+void Buzzer_Update(void)
 {
     unsigned int elapsed_ms;
     
@@ -121,6 +121,10 @@ void Key_Init(void)
     // P4M1 = 0x00, P4M0 = 0x00（初始全为准双向）
     // 无需额外配置，直接读取GPIO值
     
+        /* P1.3 配置为推挽输出（蜂鸣器） */
+    P1M1 &= ~0x08;
+    P1M0 |=  0x08;
+
     // 初始化按键1
     key1.pin_level = 1;
     key1.state = 0;          // 初始无按键
