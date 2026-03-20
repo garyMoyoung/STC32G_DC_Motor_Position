@@ -26,6 +26,7 @@ void PID_Init(PID_t *pid,
     pid->out_max   = out_max;
     pid->out_min   = out_min;
     pid->dead_band = dead_band;
+    pid->ki_scale  = 100;   /* 默认×100；角度环在PID_Init后单独设为10000 */
     PID_Reset(pid);
 }
 
@@ -72,10 +73,10 @@ long PID_Calc(PID_t *pid, int setpoint, int feedback)
     /* 积分累加 */
     pid->integral += (long)err;
 
-    /* 抗积分饱和：限制积分累加器，防止积分项溢出或超调 */
+    /* 抗积分饱和：Ki*integral/ki_scale <= out_max → integral <= out_max*ki_scale/Ki */
     if (pid->Ki > 0)
     {
-        long ilimit = pid->out_max * 100L / (long)pid->Ki;
+        long ilimit = pid->out_max * (long)pid->ki_scale / (long)pid->Ki;
         if (pid->integral >  ilimit) pid->integral =  ilimit;
         if (pid->integral < -ilimit) pid->integral = -ilimit;
     }
@@ -84,11 +85,10 @@ long PID_Calc(PID_t *pid, int setpoint, int feedback)
     derivative = err - pid->e_prev;
     pid->e_prev = err;
 
-    /* 位置式PID输出（Kp/Ki/Kd均×100存储，整体÷100还原） */
-    output = (  (long)pid->Kp * (long)err
-              + (long)pid->Ki * pid->integral
-              + (long)pid->Kd * (long)derivative
-             ) / 100L;
+    /* 位置式PID输出：Kp/Kd ÷100，Ki ÷ki_scale（各自独立缩放） */
+    output = (long)pid->Kp * (long)err / 100L
+           + (long)pid->Ki * pid->integral / (long)pid->ki_scale
+           + (long)pid->Kd * (long)derivative / 100L;
 
     /* 输出限幅 */
     if (output > pid->out_max) output = pid->out_max;

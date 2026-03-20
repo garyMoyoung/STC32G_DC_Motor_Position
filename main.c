@@ -194,16 +194,13 @@ sbit TOG = P0^4;
 #define PID_SPEED_KI    100     /* Ki = 1.00，若振荡先清0 */
 #define PID_SPEED_KD    0       /* Kd = 0.00 */
 
-/* 位置环参数（实际值×100）
- *
- * 【修复】原来 Ki=0 Kd=0，纯比例控制无法消除小角度稳态误差，
- *  配合"到位即停车"逻辑导致需要反复开关使能才能转到位。
- *  现在加入 Ki=20（0.20）用于积分消除稳态误差，
- *  加入 Kd=50（0.50）抑制超调和振荡。
+/* 位置环参数
+ *   Kp/Kd：×100存储，精度0.01
+ *   Ki   ：×10000存储，精度0.0001（由 g_pid_angle.ki_scale=10000 决定）
  */
-#define PID_ANGLE_KP    9    /* Kp = 40.00 */
-#define PID_ANGLE_KI    0      /* Ki = 0.20，积分消除稳态误差 */
-#define PID_ANGLE_KD    0      /* Kd = 0.50，抑制超调 */
+#define PID_ANGLE_KP    9       /* Kp = 0.09（×100） */
+#define PID_ANGLE_KI    4       /* Ki = 0.0000（×10000），起点为0，上位机调整 */
+#define PID_ANGLE_KD    0       /* Kd = 0.00（×100） */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
 #define MAX_SPEED_FOR_ANGLE   40
@@ -543,6 +540,7 @@ void main(void)
              MAX_SPEED_FOR_ANGLE,   /* 输出上限（rpm） */
              -MAX_SPEED_FOR_ANGLE,  /* 输出下限（rpm） */
              0);        /* 死区 = 0 */
+    g_pid_angle.ki_scale = 10000;  /* Ki精度×10000，最小步长0.0001 */
 
     /* 可写寄存器初始值 */
     modbus_regs[4] = 0;     /* Set_Speed  = 0 rpm  */
