@@ -99,8 +99,15 @@
 
 /*
  * 角度偏移量（0.1° 单位）：
- *   上电位置 = 60.0°，用户 0° 映射到电机 60°，用户 180° 映射到 240°
- *   工作范围远离 0°/360° 跳变点
+ *   将用户坐标系 0°~180° 映射到内部坐标系 60°~240°
+ *   使整个工作范围远离 0°/360° 跳变点，避免小角度控制时PID误差突变
+ *
+ *   用户角度 = 内部角度 - ANGLE_OFFSET
+ *   内部角度 = 用户角度 + ANGLE_OFFSET
+ *
+ *   用户 0°   → 内部 60°   （远离0°跳变点）
+ *   用户 90°  → 内部 150°  （中间区域，最安全）
+ *   用户 180° → 内部 240°  （远离360°跳变点）
  */
 #define ANGLE_OFFSET        600     /* 60.0° × 10 = 600 */
 
@@ -183,14 +190,20 @@ sbit TOG = P0^4;
  *   Kp=200：set=50rpm 首拍 delta_u=100，偏离中点约6%，可驱动电机启动
  *   Ki=20 ：每拍稳态积分，消除稳态误差
  */
-#define PID_SPEED_KP    4000    /* Kp = 2.00 */
-#define PID_SPEED_KI    100     /* Ki = 0.20，若振荡先清0 */
-#define PID_SPEED_KD    0      /* Kd = 0.00 */
+#define PID_SPEED_KP    4000    /* Kp = 40.00 */
+#define PID_SPEED_KI    100     /* Ki = 1.00，若振荡先清0 */
+#define PID_SPEED_KD    0       /* Kd = 0.00 */
 
-/* 位置环参数（实际值×100） */
-#define PID_ANGLE_KP    4000      /* Kp = 0.80 */
-#define PID_ANGLE_KI    0       /* Ki = 0.02 */
-#define PID_ANGLE_KD    0      /* Kd = 0.10 */
+/* 位置环参数（实际值×100）
+ *
+ * 【修复】原来 Ki=0 Kd=0，纯比例控制无法消除小角度稳态误差，
+ *  配合"到位即停车"逻辑导致需要反复开关使能才能转到位。
+ *  现在加入 Ki=20（0.20）用于积分消除稳态误差，
+ *  加入 Kd=50（0.50）抑制超调和振荡。
+ */
+#define PID_ANGLE_KP    4000    /* Kp = 40.00 */
+#define PID_ANGLE_KI    20      /* Ki = 0.20，积分消除稳态误差 */
+#define PID_ANGLE_KD    50      /* Kd = 0.50，抑制超调 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
 #define MAX_SPEED_FOR_ANGLE   100
@@ -201,7 +214,13 @@ PID_t g_pid_angle;       /* 位置环 PID 实例 */
 static void Modbus_SyncRegs(void)
 {
     /* ── 只读寄存器：用最新状态覆盖 ── */
-    modbus_regs[0] = (unsigned int)g_motor_angle;          /* Motor_Angle  */
+    /* Motor_Angle 回传给上位机时减去偏移，上位机看到的是用户角度（0~180°） */
+    {
+        int user_angle = g_motor_angle - ANGLE_OFFSET;
+        /* 规范化到 0~3599（0.0°~359.9°），避免负值 */
+        if (user_angle < 0) user_angle += 3600;
+        modbus_regs[0] = (unsigned int)user_angle;         /* Motor_Angle（用户坐标系） */
+    }
     modbus_regs[1] = (unsigned int)g_motor_speed;          /* Motor_Speed  */
     modbus_regs[2] = (unsigned int)(g_enc_total >> 16);    /* Encoder_H    */
     modbus_regs[3] = (unsigned int)(g_enc_total & 0xFFFF); /* Encoder_L    */
@@ -214,7 +233,18 @@ static void Modbus_SyncRegs(void)
 
     /* ── 可写寄存器：取回上位机设定值 ── */
     g_set_speed = (int)modbus_regs[4];       /* Set_Speed    */
-    g_set_angle = (int)modbus_regs[5];       /* Set_Angle    */
+
+    /* Set_Angle：上位机写入用户角度（0~180°即0~1800），加偏移转为内部角度
+     * 例如用户写 0° → 内部 60°，用户写 180° → 内部 240°
+     */
+    {
+        int user_set = (int)modbus_regs[5];
+        int internal_set = user_set + ANGLE_OFFSET;
+        /* 规范化到 0~3599 */
+        if (internal_set >= 3600) internal_set -= 3600;
+        if (internal_set < 0)    internal_set += 3600;
+        g_set_angle = internal_set;
+    }
     g_ctrl_mode = (unsigned char)modbus_regs[6]; /* Control_Mode */
 
     /* ── PID 参数同步（0x000A~0x000F）──
@@ -250,10 +280,13 @@ static void Motor_ControlUpdate(void)
         PWM_OutputDisable();        /* 关闭PWM输出引脚（ENO=0x00）           */
         g_pwm_duty = PWM_MID;
         PID_Reset(&g_pid_speed);
-        /* 注意：角度环积分不清零！
-         * 如果清零，重新使能时位置环要从零开始积分，导致需要反复使能才能到位。
-         * 保留积分器使得重新使能后角度环能立即输出正确的目标速度。
+        /* 【修复】禁用使能时同时清零角度环积分。
+         * 原代码故意不清角度环积分，但实际效果是：
+         *   残留积分在重新使能时可能导致电机突然冲击。
+         * 现在统一清零，配合下面去掉"到位即停车"的修复，
+         * 重新使能后 PID 可以从当前实际位置自然收敛到目标位置。
          */
+        PID_Reset(&g_pid_angle);
         return;
     }
 
@@ -290,6 +323,23 @@ static void Motor_ControlUpdate(void)
             break;
 
         /* ── 模式1：位置串级（位置环 → 速度环） ── */
+        /*
+         * 【修复】去掉了原来的"到位即停车 + Reset速度环"逻辑。
+         *
+         * 原来的问题：
+         *   当角度误差 ≤ 0.5° 时，代码会 PID_Reset(&g_pid_speed) 并直接
+         *   break 跳过速度环，将 PWM 置为中点停车。但电机停下后可能因惯性
+         *   或摩擦略微偏离目标，误差重新变大；此时速度环积分已被清零，加上
+         *   角度环 Ki=0（纯比例），小误差产生的目标速度极小，速度环从零开始
+         *   无法驱动电机 → 必须反复开关使能才能一点点逼近目标位置。
+         *
+         * 修复方案：
+         *   1. 不再在到位时强制停车和清零速度环，让串级PID自然收敛。
+         *      位置误差→0 时，位置环输出的目标速度→0，速度环自然减速停车。
+         *   2. 给角度环加上 Ki（积分项），消除小角度稳态误差。
+         *   3. 给角度环加上 Kd（微分项），抑制超调和振荡。
+         *   4. 到位标志仍然设置（供上位机读取），但不影响PID运行。
+         */
         case 1:
             /* 第一级：位置环PID
              *   输入：目标角度(0.1°) vs 当前角度(0.1°)
@@ -299,9 +349,6 @@ static void Motor_ControlUpdate(void)
 
             /* 到位判断：误差在±5（0.5°）内设置到位标志，但不停止PID！
              * PID 会自行将速度收敛到0，由位置环积分维持位置。
-             * 如果强制停车会导致：
-             *   1. 惯性飘移后需要重新启动PID
-             *   2. 速度环积分清零后每次都要从零开始建立
              */
             {
                 int angle_err = g_set_angle - g_motor_angle;
@@ -319,7 +366,7 @@ static void Motor_ControlUpdate(void)
                 }
             }
 
-            /* 第二级：速度环PID
+            /* 第二级：速度环PID（始终执行，不再因到位而跳过）
              *   setpoint = speed_sp（位置环输出，带符号）
              *   feedback = g_motor_speed（带符号）
              * 当位置误差→0时，位置环输出speed_sp→0，速度环自然将电机减速停下
@@ -373,7 +420,7 @@ static void OLED_Update(void)
     int  spd, ang, sv;
 
     spd = g_motor_speed;
-    ang = g_motor_angle / 10;   /* 0.1° → 整数度 */
+    ang = 0;   /* 将在 page 2-3 区域使用用户角度重新计算 */
 
     OLED_BuffClear();
 
@@ -387,7 +434,12 @@ static void OLED_Update(void)
     else
         OLED_BuffShowString(100, 0, "OFF", 0);
 
-    /* ── page 2-3：当前角度 ── */
+    /* ── page 2-3：当前角度（用户坐标系：内部角度 - 偏移） ── */
+    {
+        int user_ang = g_motor_angle - ANGLE_OFFSET;
+        if (user_ang < 0) user_ang += 3600;
+        ang = user_ang / 10;
+    }
     OLED_BuffShowString(0,  2, "ANG:", 0);
     sprintf(buf, "%4d", ang);
     OLED_BuffShowString(32, 2, buf, 0);
@@ -404,7 +456,7 @@ static void OLED_Update(void)
     }
     else if (g_ctrl_mode == 1)
     {
-        sv = (g_set_angle) / 10;   /* 减偏移，显示用户角度 */
+        sv = (int)modbus_regs[5] / 10;   /* modbus_regs[5]是用户角度(0.1°)，直接显示 */
         sprintf(buf, "%4d deg", sv);
         OLED_BuffShowString(32, 4, buf, 0);
         OLED_BuffShowString(96, 4, "ANG", 1);
@@ -491,13 +543,13 @@ void main(void)
              PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD,
              (long)PWM_MID,    /* 输出上限 */
              -(long)PWM_MID,   /* 输出下限 */
-             0);               /* 死区 = 2rpm */
+             0);               /* 死区 = 0rpm */
 
     PID_Init(&g_pid_angle,
              PID_ANGLE_KP, PID_ANGLE_KI, PID_ANGLE_KD,
              MAX_SPEED_FOR_ANGLE,   /* 输出上限（rpm） */
              -MAX_SPEED_FOR_ANGLE,  /* 输出下限（rpm） */
-             0);        /* 死区 = 5（对应0.5°） */
+             0);        /* 死区 = 0 */
 
     /* 可写寄存器初始值 */
     modbus_regs[4] = 0;     /* Set_Speed  = 0 rpm  */
@@ -578,7 +630,7 @@ void main(void)
                    g_motor_speed,
                    g_enc_delta,
                    g_pwm_duty,
-                   g_motor_angle / 10,
+                   (g_motor_angle - ANGLE_OFFSET + 3600) % 3600 / 10,
                    g_enc_total
                 );
         }
@@ -684,17 +736,20 @@ void Timer0_ISR(void) interrupt 1
         }
 
         /*
-         * 角度换算（输出轴，累计角度，0.1° 精度）：
-         *   angle(0.1°) = enc_total * 3600 / ENC_PPR_OUTPUT
+         * 角度换算（输出轴，0.1° 精度，内部坐标系含偏移）：
+         *   raw_angle(0.1°) = (enc_total % ENC_PPR_OUTPUT) * 3600 / ENC_PPR_OUTPUT
+         *   g_motor_angle   = raw_angle + ANGLE_OFFSET（规范化到 0~3599）
          *
-         * 上电时 enc_total=0，因此上电位置即为 0°（参考零点）。
-         * 结果为有符号累计值，正转为正、反转为负，范围约 ±3276°（±9圈）。
-         * 超出 int 范围后溢出，若需更大行程可改为 long 并同步修改 PID 接口。
+         * 上电时 enc_total=0 → raw_angle=0 → g_motor_angle=ANGLE_OFFSET(600=60.0°)
+         * 这意味着上电位置在内部坐标系中是 60°，在用户坐标系中是 0°
+         * 用户工作范围 0°~180° 对应内部 60°~240°，远离 0°/360° 跳变点
          */
         {
             long rem = g_enc_total % (long)ENC_PPR_OUTPUT;
             if (rem < 0) rem += (long)ENC_PPR_OUTPUT;
-            g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT);
+            g_motor_angle = (int)(rem * 3600L / ENC_PPR_OUTPUT) + ANGLE_OFFSET;
+            /* 规范化到 0~3599 */
+            if (g_motor_angle >= 3600) g_motor_angle -= 3600;
         }
 
         /* 编码器采样完毕，立即执行PID控制输出（控制周期=10ms） */

@@ -1,4 +1,4 @@
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 1   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 1   
 
 
 C251 COMPILER V5.60.0, COMPILATION OF MODULE key
@@ -66,7 +66,7 @@ stmt  level    source
    56              unsigned char is_on;
    57          } g_tone_segments[][8] = {
    58              /* [TONE_NONE] = {} 空音效 */
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 2   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 2   
 
    59              {
    60                  {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}  // TONE_NONE
@@ -134,7 +134,7 @@ stmt  level    source
   122          
   123          void Buzzer_PlayTone(unsigned char tone_type)
   124          {
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 3   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 3   
 
   125   1          if (tone_type == TONE_NONE || tone_type > TONE_DOUBLE_CLICK)
   126   1              return;
@@ -202,7 +202,7 @@ stmt  level    source
   188   1          Printf("[KEY] Init OK\r\n");
   189   1      }
   190          
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 4   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 4   
 
   191          /*=============================================================================
   192           * 单个按键状态机处理
@@ -250,7 +250,7 @@ stmt  level    source
   234   4                  }
   235   3              }
   236   2          }
-  237   1          
+  237   1      
   238   1          // ========== 按键释放过程 ==========
   239   1          else  // GPIO为1（释放）
   240   1          {
@@ -270,7 +270,7 @@ stmt  level    source
   254   5                          
   255   5                          if (pkey->click_count == 1)
   256   5                          {
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 5   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 5   
 
   257   6                              // 第一次单击：立即发送事件，启动双击检测
   258   6                              pkey->event = KEY_SINGLE_CLICK;
@@ -298,7 +298,7 @@ stmt  level    source
   280   3                  pkey->debounce_cnt = 0;
   281   3              }
   282   2          }
-  283   1          
+  283   1      
   284   1          // ========== 双击定时器倒计时 ==========
   285   1          if (pkey->click_timer > 0)
   286   1          {
@@ -338,7 +338,7 @@ stmt  level    source
   320   2              case 2:
   321   2                  return key2.event;
   322   2              case 3:
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 6   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 6   
 
   323   2                  return key3.event;
   324   2              default:
@@ -406,7 +406,7 @@ stmt  level    source
   386   2                  modbus_regs[5] = (unsigned int)sv;
   387   2                  Printf("SetAng=%d(0.1deg)\r\n", sv);
   388   2                  break;
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 7   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 7   
 
   389   2      
   390   2              default:
@@ -474,7 +474,7 @@ stmt  level    source
   452   2          }
   453   1          else if (event == KEY_DOUBLE_CLICK)
   454   1          {
-C251 COMPILER V5.60.0,  key                                                                19/03/26  18:12:35  PAGE 8   
+C251 COMPILER V5.60.0,  key                                                                20/03/26  12:34:31  PAGE 8   
 
   455   2              Key_AdjustTarget(-adj_steps[g_key_adj_target][2]);
   456   2              Buzzer_PlayTone(TONE_DOUBLE_CLICK);
