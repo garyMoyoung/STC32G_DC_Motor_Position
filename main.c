@@ -201,12 +201,12 @@ sbit TOG = P0^4;
  *  现在加入 Ki=20（0.20）用于积分消除稳态误差，
  *  加入 Kd=50（0.50）抑制超调和振荡。
  */
-#define PID_ANGLE_KP    4000    /* Kp = 40.00 */
-#define PID_ANGLE_KI    20      /* Ki = 0.20，积分消除稳态误差 */
-#define PID_ANGLE_KD    50      /* Kd = 0.50，抑制超调 */
+#define PID_ANGLE_KP    9    /* Kp = 40.00 */
+#define PID_ANGLE_KI    0      /* Ki = 0.20，积分消除稳态误差 */
+#define PID_ANGLE_KD    0      /* Kd = 0.50，抑制超调 */
 
 /* 位置环输出限幅（最大目标速度，rpm） */
-#define MAX_SPEED_FOR_ANGLE   100
+#define MAX_SPEED_FOR_ANGLE   40
 
 PID_t g_pid_speed;       /* 速度环 PID 实例（非static，key.c 需访问） */
 PID_t g_pid_angle;       /* 位置环 PID 实例 */
@@ -354,16 +354,9 @@ static void Motor_ControlUpdate(void)
                 int angle_err = g_set_angle - g_motor_angle;
                 if (angle_err < 0) angle_err = -angle_err;
                 if (angle_err <= 5)
-                {
-                    g_status_flags |= (1 << 0);     /* bit0 到位 */
-                    PID_Reset(&g_pid_speed);
-                    /* pwm_duty 已默认为 PWM_MID（停车），位置环积分保留 */
-                    break;
-                }
+                    g_status_flags |=  (1 << 0);    /* bit0 到位 */
                 else
-                {
                     g_status_flags &= ~(1 << 0);
-                }
             }
 
             /* 第二级：速度环PID（始终执行，不再因到位而跳过）
